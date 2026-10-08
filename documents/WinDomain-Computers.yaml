@@ -1,0 +1,82 @@
+schemaVersion: '2.2'
+description: Inspect/prestage/disable/move one AD computer. Excludes domain controllers; does not reset machine passwords or join hosts.
+parameters:
+  Action:
+    type: String
+    default: Inspect
+    allowedValues: [Inspect, Create, Disable, Move]
+    interpolationType: ENV_VAR
+  Server:
+    type: String
+    allowedPattern: '^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$'
+    interpolationType: ENV_VAR
+  ManagedOU:
+    type: String
+    allowedPattern: '^OU=[^\r\n]{1,1000}$'
+    interpolationType: ENV_VAR
+  Identity:
+    type: String
+    description: Computer name without trailing dollar sign.
+    allowedPattern: '^[A-Za-z0-9][A-Za-z0-9-]{0,14}$'
+    interpolationType: ENV_VAR
+  TargetOU:
+    type: String
+    default: ''
+    allowedPattern: '^(OU=[^\r\n]{1,1000})?$'
+    interpolationType: ENV_VAR
+  Apply:
+    type: String
+    default: 'false'
+    allowedValues: ['false', 'true']
+    interpolationType: ENV_VAR
+  ChangeTicket:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/-]{0,100}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: Computers
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '300'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          if (!$env:SSM_Action -or !$env:SSM_Server -or !$env:SSM_ManagedOU -or !$env:SSM_Identity -or !$env:SSM_Apply) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+          Import-Module ActiveDirectory
+          $server = $env:SSM_Server
+          $scope = Get-ADOrganizationalUnit -Identity $env:SSM_ManagedOU -Server $server
+          $sam = $env:SSM_Identity + '$'
+          $matches = @(Get-ADComputer -Filter { SamAccountName -eq $sam } -Server $server -Properties adminCount,userAccountControl,LastLogonDate)
+          if ($matches.Count -gt 1) { throw 'Ambiguous computer.' }
+          $computer = $null
+          if ($matches.Count) {
+              $computer = $matches[0]
+              if (!$computer.DistinguishedName.EndsWith(',' + $scope.DistinguishedName, [StringComparison]::OrdinalIgnoreCase)) { throw 'Computer outside managed OU.' }
+              $computer | Select-Object Name,DistinguishedName,Enabled,LastLogonDate | ConvertTo-Json
+          }
+          if ($env:SSM_Action -eq 'Inspect') { if (!$computer) { throw 'Computer not found.' }; exit 0 }
+          if ($computer -and ($computer.adminCount -eq 1 -or ($computer.userAccountControl -band 8192))) { throw 'Protected computers and domain controllers are excluded.' }
+          if ($env:SSM_Action -eq 'Create') { if ($computer) { throw 'Computer already exists.' } }
+          elseif (!$computer) { throw 'Computer not found.' }
+          $target = $null
+          if ($env:SSM_Action -eq 'Move') {
+              if (!$env:SSM_TargetOU) { throw 'Move requires TargetOU.' }
+              $target = Get-ADOrganizationalUnit -Identity $env:SSM_TargetOU -Server $server
+              if ($target.DistinguishedName -ne $scope.DistinguishedName -and !$target.DistinguishedName.EndsWith(',' + $scope.DistinguishedName, [StringComparison]::OrdinalIgnoreCase)) { throw 'TargetOU must remain within ManagedOU.' }
+          }
+          if ($env:SSM_Apply -ne 'true') { Write-Output "PREVIEW: $env:SSM_Action computer $sam. No changes made."; exit 0 }
+          if (!$env:SSM_ChangeTicket) { throw 'Apply requires ChangeTicket.' }
+          switch ($env:SSM_Action) {
+              'Create' { New-ADComputer -Name $env:SSM_Identity -SamAccountName $sam -Path $scope.DistinguishedName -Enabled $true -Server $server }
+              'Disable' { Disable-ADAccount -Identity $computer.ObjectGUID -Server $server }
+              'Move' { Move-ADObject -Identity $computer.ObjectGUID -TargetPath $target.DistinguishedName -Server $server }
+          }
+          $result = Get-ADComputer -Identity $sam -Server $server
+          if ($env:SSM_Action -eq 'Disable' -and $result.Enabled) { throw 'Disable verification failed.' }
+          if ($env:SSM_Action -eq 'Move' -and $result.DistinguishedName -ne ('CN=' + $env:SSM_Identity + ',' + $target.DistinguishedName)) { throw 'Move verification failed; inspect the actual DN.' }
+          Write-Output "APPLIED: $env:SSM_Action; ticket=$env:SSM_ChangeTicket"
+          $result | Select-Object Name,DistinguishedName,Enabled | ConvertTo-Json

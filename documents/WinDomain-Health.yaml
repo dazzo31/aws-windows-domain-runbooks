@@ -1,0 +1,42 @@
+schemaVersion: '2.2'
+description: Read-only AD forest/domain, replication, DC service, SYSVOL/NETLOGON, DNS discovery and time diagnostics. Run on a DC.
+parameters:
+  Server:
+    type: String
+    allowedPattern: '^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: Health
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '900'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:SSM_Server) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+          Import-Module ActiveDirectory
+          if ((Get-CimInstance Win32_ComputerSystem).DomainRole -lt 4) { throw 'Target must be a domain controller.' }
+          $failed = $false
+          $domain = Get-ADDomain -Server $env:SSM_Server
+          $domain | Select-Object DNSRoot,DomainMode,PDCEmulator,RIDMaster,InfrastructureMaster | ConvertTo-Json
+          Get-ADForest -Server $env:SSM_Server | Select-Object ForestMode,SchemaMaster,DomainNamingMaster,Domains | ConvertTo-Json
+          $failures = @(Get-ADReplicationFailure -Target $env:SSM_Server -Scope Server)
+          $failures | Select-Object Server,Partner,FirstFailureTime,FailureCount,LastError | ConvertTo-Json
+          if ($failures.Count) { $failed = $true }
+          foreach ($name in @('NTDS','Netlogon','DFSR','DNS','W32Time')) {
+              $service = Get-Service -Name $name
+              $service | Select-Object Name,Status | ConvertTo-Json
+              if ($service.Status -ne 'Running') { $failed = $true }
+          }
+          foreach ($share in @('SYSVOL','NETLOGON')) { Get-SmbShare -Name $share | Select-Object Name,Path | ConvertTo-Json }
+          Resolve-DnsName -Name ('_ldap._tcp.dc._msdcs.' + $domain.DNSRoot) -Type SRV -DnsOnly | Select-Object Name,NameTarget,Port | ConvertTo-Json
+          & repadmin.exe /showrepl $env:SSM_Server
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          & dcdiag.exe "/s:$env:SSM_Server" /test:Advertising /test:Services /test:SysVolCheck /test:NetLogons /test:Replications
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          & w32tm.exe /query /status
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          if ($failed) { throw 'One or more health checks failed. Review output; no repairs were attempted.' }
+          Write-Output 'Health command checks passed. This does not replace backup/restore or security assurance testing.'

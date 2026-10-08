@@ -1,0 +1,11 @@
+{
+  "name": "wuu-cloud-coordinator",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "WUU2-CLI Cloud Coordinator and Lambda Handlers for Phased Fleet Patching",
+  "private": true,
+  "scripts": {
+    "test": "node --test ../tests/fleet-orchestration.test.mjs"
+  }
+}
+

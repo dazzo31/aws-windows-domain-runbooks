@@ -1,0 +1,92 @@
+schemaVersion: '2.2'
+description: Inspect/create security groups and add/remove one principal. No protected-group changes or nested group membership writes.
+parameters:
+  Action:
+    type: String
+    default: Inspect
+    allowedValues: [Inspect, Create, AddMember, RemoveMember]
+    interpolationType: ENV_VAR
+  Server:
+    type: String
+    allowedPattern: '^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$'
+    interpolationType: ENV_VAR
+  ManagedOU:
+    type: String
+    allowedPattern: '^OU=[^\r\n]{1,1000}$'
+    interpolationType: ENV_VAR
+  Identity:
+    type: String
+    allowedPattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+    interpolationType: ENV_VAR
+  Member:
+    type: String
+    default: ''
+    description: Exact user/computer DN in ManagedOU. Group nesting is deliberately excluded.
+    allowedPattern: '^[^\r\n]{0,1000}$'
+    interpolationType: ENV_VAR
+  GroupScope:
+    type: String
+    default: Global
+    allowedValues: [Global, DomainLocal, Universal]
+    interpolationType: ENV_VAR
+  Apply:
+    type: String
+    default: 'false'
+    allowedValues: ['false', 'true']
+    interpolationType: ENV_VAR
+  ChangeTicket:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/-]{0,100}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: Groups
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '300'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          if (!$env:SSM_Action -or !$env:SSM_Server -or !$env:SSM_ManagedOU -or !$env:SSM_Identity -or !$env:SSM_Apply) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+          Import-Module ActiveDirectory
+          $server = $env:SSM_Server
+          $scope = Get-ADOrganizationalUnit -Identity $env:SSM_ManagedOU -Server $server
+          $identity = $env:SSM_Identity
+          $matches = @(Get-ADGroup -Filter { SamAccountName -eq $identity } -Server $server -Properties adminCount,member,memberOf)
+          if ($matches.Count -gt 1) { throw 'Ambiguous group.' }
+          $group = $null
+          if ($matches.Count) {
+              $group = $matches[0]
+              if (!$group.DistinguishedName.EndsWith(',' + $scope.DistinguishedName, [StringComparison]::OrdinalIgnoreCase)) { throw 'Group outside managed OU.' }
+              $group | Select-Object SamAccountName,DistinguishedName,GroupScope,GroupCategory,member,memberOf | ConvertTo-Json -Depth 4
+          }
+          if ($env:SSM_Action -eq 'Inspect') { if (!$group) { throw 'Group not found.' }; exit 0 }
+          if ($group -and ($group.adminCount -eq 1 -or $group.memberOf.Count -gt 0)) { throw 'Protected or nested groups cannot be changed by this pack.' }
+          $member = $null
+          if ($env:SSM_Action -eq 'Create') {
+              if ($group) { throw 'Group already exists.' }
+          } else {
+              if (!$group -or !$env:SSM_Member) { throw 'Membership change requires an existing group and Member DN.' }
+              $member = Get-ADObject -Identity $env:SSM_Member -Server $server -Properties adminCount
+              if ($member.ObjectClass -notin @('user','computer') -or $member.adminCount -eq 1) { throw 'Only unprotected users/computers may be members.' }
+              if (!$member.DistinguishedName.EndsWith(',' + $scope.DistinguishedName, [StringComparison]::OrdinalIgnoreCase)) { throw 'Member outside managed OU.' }
+          }
+          if ($env:SSM_Apply -ne 'true') { Write-Output "PREVIEW: $env:SSM_Action group $env:SSM_Identity. No changes made."; exit 0 }
+          if (!$env:SSM_ChangeTicket) { throw 'Apply requires ChangeTicket.' }
+          switch ($env:SSM_Action) {
+              'Create' { New-ADGroup -Name $env:SSM_Identity -SamAccountName $env:SSM_Identity -GroupCategory Security -GroupScope $env:SSM_GroupScope -Path $scope.DistinguishedName -Server $server }
+              'AddMember' {
+                  if ($group.member -notcontains $member.DistinguishedName) { Add-ADGroupMember -Identity $group.ObjectGUID -Members $member.DistinguishedName -Server $server }
+              }
+              'RemoveMember' {
+                  if ($group.member -contains $member.DistinguishedName) { Remove-ADGroupMember -Identity $group.ObjectGUID -Members $member.DistinguishedName -Server $server -Confirm:$false }
+              }
+          }
+          $result = Get-ADGroup -Identity $env:SSM_Identity -Server $server -Properties member
+          if ($env:SSM_Action -eq 'AddMember' -and $result.member -notcontains $member.DistinguishedName) { throw 'Membership verification failed.' }
+          if ($env:SSM_Action -eq 'RemoveMember' -and $result.member -contains $member.DistinguishedName) { throw 'Removal verification failed.' }
+          Write-Output "APPLIED: $env:SSM_Action; ticket=$env:SSM_ChangeTicket"
+          $result | Select-Object SamAccountName,DistinguishedName,member | ConvertTo-Json -Depth 4

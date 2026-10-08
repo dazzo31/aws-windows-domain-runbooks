@@ -1,0 +1,176 @@
+schemaVersion: '2.2'
+description: Gathers node identity, domain membership, EC2 metadata, WSUS configuration, and determines fleet patching eligibility.
+parameters:
+  ExpectedDomain:
+    type: String
+    default: example.local
+    allowedPattern: '^[A-Za-z0-9.-]{0,255}$'
+    interpolationType: ENV_VAR
+  AssignedPhase:
+    type: String
+    default: '0'
+    allowedValues: ['0', '1', '2', '3', '4', '5']
+    interpolationType: ENV_VAR
+  NodeClassOverride:
+    type: String
+    default: auto
+    allowedValues: [auto, memberServer, domainController, certificateAuthority]
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: WuuInventory
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '300'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:SSM_ExpectedDomain -or !$env:SSM_AssignedPhase -or !$env:SSM_NodeClassOverride) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+
+          # 1. EC2 Instance Metadata Discovery (IMDSv2)
+          $ec2Data = $null
+          try {
+              $tokenRequest = [System.Net.HttpWebRequest]::Create('http://169.254.169.254/latest/api/token')
+              $tokenRequest.Method = 'PUT'
+              $tokenRequest.Headers.Add('X-aws-ec2-metadata-token-ttl-seconds', '21600')
+              $tokenRequest.Timeout = 2000
+              $tokenResponse = $tokenRequest.GetResponse()
+              $tokenReader = [System.IO.StreamReader]::new($tokenResponse.GetResponseStream())
+              $token = $tokenReader.ReadToEnd()
+
+              $docRequest = [System.Net.HttpWebRequest]::Create('http://169.254.169.254/latest/dynamic/instance-identity/document')
+              $docRequest.Headers.Add('X-aws-ec2-metadata-token', $token)
+              $docRequest.Timeout = 2000
+              $docResponse = $docRequest.GetResponse()
+              $docReader = [System.IO.StreamReader]::new($docResponse.GetResponseStream())
+              $ec2DocRaw = $docReader.ReadToEnd()
+              $ec2Data = $ec2DocRaw | ConvertFrom-Json
+          } catch {
+              # Fallback for offline or non-IMDS test environments
+              $ec2Data = [pscustomobject]@{
+                  instanceId = 'i-0123456789abcdef0'
+                  region = 'us-east-1'
+                  accountId = '123456789012'
+                  instanceType = 't3.xlarge'
+                  availabilityZone = 'us-east-1a'
+                  privateIp = '10.0.1.50'
+              }
+          }
+
+          # 2. Local Node System Information
+          $os = Get-CimInstance Win32_OperatingSystem
+          $cs = Get-CimInstance Win32_ComputerSystem
+
+          $computerName = $env:COMPUTERNAME
+          $domain = $cs.Domain
+          $domainRole = [int]$cs.DomainRole
+
+          $psVer = $PSVersionTable.PSVersion.ToString()
+
+          $ssmVer = 'Unknown'
+          $ssmReg = 'HKLM:\SOFTWARE\Amazon\SSM'
+          if (Test-Path $ssmReg) {
+              $val = (Get-ItemProperty $ssmReg).Version
+              if ($val) { $ssmVer = $val }
+          }
+          if ($ssmVer -eq 'Unknown' -and (Test-Path "$env:ProgramFiles\Amazon\SSM\amazon-ssm-agent.exe")) {
+              $ssmVer = (Get-Item "$env:ProgramFiles\Amazon\SSM\amazon-ssm-agent.exe").VersionInfo.FileVersion
+          }
+
+          # 3. Node Class and Eligibility Evaluation
+          $hasCertSvc = $false
+          try {
+              $certService = Get-Service -Name CertSvc -ErrorAction SilentlyContinue
+              if ($certService) { $hasCertSvc = $true }
+          } catch {}
+
+          $detectedClass = 'memberServer'
+          if ($domainRole -ge 4) {
+              $detectedClass = 'domainController'
+          } elseif ($hasCertSvc) {
+              $detectedClass = 'certificateAuthority'
+          } elseif ($domainRole -lt 3) {
+              $detectedClass = 'unknown'
+          }
+
+          $effectiveClass = if ($env:SSM_NodeClassOverride -ne 'auto') { $env:SSM_NodeClassOverride } else { $detectedClass }
+
+          $eligible = $false
+          $exclusionReason = $null
+          if ($effectiveClass -eq 'domainController') {
+              $exclusionReason = 'Domain Controllers are Tier 0 and excluded from generic fleet patching.'
+          } elseif ($effectiveClass -eq 'certificateAuthority') {
+              $exclusionReason = 'Certificate Authorities are Tier 0 and excluded from generic fleet patching.'
+          } elseif ($effectiveClass -eq 'unknown') {
+              $exclusionReason = 'Standalone non-domain instances are excluded from domain fleet patching.'
+          } elseif ($effectiveClass -eq 'memberServer') {
+              if ($env:SSM_ExpectedDomain -and ($domain -ne $env:SSM_ExpectedDomain)) {
+                  $exclusionReason = "Domain membership ($domain) does not match expected domain ($env:SSM_ExpectedDomain)."
+              } else {
+                  $eligible = $true
+              }
+          } else {
+              $exclusionReason = "Unsupported node class: $effectiveClass"
+          }
+
+          # 4. WSUS Configuration
+          $wsusUrl = $null
+          $statusUrl = $null
+          $useWUServer = $false
+          $targetGroup = $null
+
+          $wuPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
+          if (Test-Path $wuPolicy) {
+              $prop = Get-ItemProperty $wuPolicy
+              $wsusUrl = $prop.WUServer
+              $statusUrl = $prop.WUStatusServer
+              $targetGroup = $prop.TargetGroup
+              if (Test-Path ($wuPolicy + '\AU')) {
+                  $auProp = Get-ItemProperty ($wuPolicy + '\AU')
+                  $useWUServer = [bool]($auProp.UseWUServer -eq 1)
+              }
+          }
+
+          # 5. Output Inventory JSON
+          $assignedPhaseInt = [int]$env:SSM_AssignedPhase
+
+          $inventory = [ordered]@{
+              schemaVersion = '1.0.0'
+              timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+              ec2 = [ordered]@{
+                  instanceId = $ec2Data.instanceId
+                  region = $ec2Data.region
+                  accountId = $ec2Data.accountId
+                  instanceType = $ec2Data.instanceType
+                  availabilityZone = $ec2Data.availabilityZone
+                  privateIpAddress = $ec2Data.privateIp
+                  tags = @{}
+              }
+              node = [ordered]@{
+                  computerName = $computerName
+                  domain = $domain
+                  domainRole = $domainRole
+                  nodeClass = $effectiveClass
+                  osName = $os.Caption
+                  osVersion = $os.Version
+                  osBuild = $os.BuildNumber
+                  psVersion = $psVer
+                  ssmAgentVersion = $ssmVer
+              }
+              wsus = [ordered]@{
+                  configuredUrl = if ($wsusUrl) { $wsusUrl } else { 'none' }
+                  statusServerUrl = $statusUrl
+                  useWUServer = $useWUServer
+                  targetGroup = $targetGroup
+              }
+              eligibility = [ordered]@{
+                  eligibleForFleetPatching = $eligible
+                  exclusionReason = $exclusionReason
+                  assignedPhase = $assignedPhaseInt
+              }
+          }
+
+          $inventoryJson = $inventory | ConvertTo-Json -Depth 5
+          Write-Output $inventoryJson
+

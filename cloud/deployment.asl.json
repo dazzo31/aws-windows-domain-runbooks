@@ -1,0 +1,1119 @@
+{
+  "Comment": "WUU2-CLI Durable Phased Fleet Deployment State Machine. Enforces 5 ordered phases, bounded concurrency, canary gates, BlockOnFailure, and verified reboot/postcheck workflows.",
+  "TimeoutSeconds": 14400,
+  "StartAt": "ValidateDeploymentPlan",
+  "States": {
+    "ValidateDeploymentPlan": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName.$": "States.Format('wuu-validate-plan-{}', $.environment)",
+        "Payload": {
+          "planId.$": "$.planId",
+          "changeTicket.$": "$.changeTicket",
+          "planDigest.$": "$.planDigest",
+          "environment.$": "$.environment"
+        }
+      },
+      "ResultPath": "$.validationResult",
+      "Next": "ExecutePhase1Canary",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "DeploymentValidationFailed"
+        }
+      ]
+    },
+
+    "ExecutePhase1Canary": {
+      "Type": "Map",
+      "Comment": "Phase 1: Canary node execution with MaxConcurrency 1 and strict BlockOnFailure gate.",
+      "ItemsPath": "$.targetNodes",
+      "MaxConcurrency": 1,
+      "Parameters": {
+        "node.$": "$$.Map.Item.Value",
+        "planId.$": "$.planId",
+        "action.$": "$.action",
+        "changeTicket.$": "$.changeTicket",
+        "workerPackage.$": "$.workerPackage",
+        "documentVersion.$": "$.documentVersion",
+        "rebootPolicy.$": "$.rebootPolicy",
+        "environment.$": "$.environment"
+      },
+      "Iterator": {
+        "StartAt": "FilterPhase1",
+        "States": {
+          "FilterPhase1": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.node.phase",
+                "NumericEquals": 1,
+                "Next": "DispatchPhase1Node"
+              }
+            ],
+            "Default": "SkipNonPhase1Node"
+          },
+          "SkipNonPhase1Node": {
+            "Type": "Pass",
+            "Result": { "status": "SKIPPED_NOT_PHASE_1" },
+            "End": true
+          },
+          "DispatchPhase1Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "computerName.$": "$.node.computerName",
+                "action.$": "$.action",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "workerPackage.$": "$.workerPackage",
+                "documentVersion.$": "$.documentVersion",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.dispatchResult",
+            "Next": "WaitPhase1Execution"
+          },
+          "WaitPhase1Execution": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ReconcilePhase1Node"
+          },
+          "ReconcilePhase1Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.dispatchResult.Payload.commandId",
+                "operationId.$": "$.dispatchResult.Payload.operationId",
+                "owner.$": "$.dispatchResult.Payload.owner",
+                "fencingToken.$": "$.dispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.reconcileResult",
+            "Next": "CheckPhase1Complete"
+          },
+          "CheckPhase1Complete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.reconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase1Execution"
+              },
+              {
+                "Variable": "$.reconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase1NodeFailed"
+              },
+              {
+                "Variable": "$.reconcileResult.Payload.rebootRequired",
+                "BooleanEquals": true,
+                "Next": "CheckPhase1RebootAllowed"
+              }
+            ],
+            "Default": "Phase1NodeSucceeded"
+          },
+          "CheckPhase1RebootAllowed": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.rebootPolicy.rebootAllowed",
+                "BooleanEquals": true,
+                "Next": "DispatchPhase1Reboot"
+              }
+            ],
+            "Default": "Phase1NodeSucceeded"
+          },
+          "DispatchPhase1Reboot": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "action": "Reboot",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "workerPackage.$": "$.workerPackage",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.rebootDispatchResult",
+            "Next": "WaitPhase1Reboot"
+          },
+          "WaitPhase1Reboot": {
+            "Type": "Wait",
+            "Seconds": 30,
+            "Next": "ReconcilePhase1Reboot"
+          },
+          "ReconcilePhase1Reboot": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.rebootDispatchResult.Payload.commandId",
+                "operationId.$": "$.rebootDispatchResult.Payload.operationId",
+                "owner.$": "$.rebootDispatchResult.Payload.owner",
+                "fencingToken.$": "$.rebootDispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.rebootReconcileResult",
+            "Next": "CheckPhase1RebootComplete"
+          },
+          "CheckPhase1RebootComplete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.rebootReconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase1Reboot"
+              },
+              {
+                "Variable": "$.rebootReconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase1NodeFailed"
+              }
+            ],
+            "Default": "DispatchPhase1Verify"
+          },
+          "DispatchPhase1Verify": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "action": "Verify",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "priorBootId.$": "$.rebootReconcileResult.Payload.bootId",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.verifyDispatchResult",
+            "Next": "WaitPhase1Verify"
+          },
+          "WaitPhase1Verify": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ReconcilePhase1Verify"
+          },
+          "ReconcilePhase1Verify": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.verifyDispatchResult.Payload.commandId",
+                "operationId.$": "$.verifyDispatchResult.Payload.operationId",
+                "owner.$": "$.verifyDispatchResult.Payload.owner",
+                "fencingToken.$": "$.verifyDispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.verifyReconcileResult",
+            "Next": "CheckPhase1VerifyComplete"
+          },
+          "CheckPhase1VerifyComplete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.verifyReconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase1Verify"
+              },
+              {
+                "Variable": "$.verifyReconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase1NodeFailed"
+              }
+            ],
+            "Default": "Phase1NodeSucceeded"
+          },
+          "Phase1NodeFailed": {
+            "Type": "Fail",
+            "Error": "CanaryNodeExecutionFailed",
+            "Cause": "Canary node failed during execution or postcheck verification."
+          },
+          "Phase1NodeSucceeded": {
+            "Type": "Pass",
+            "Result": { "status": "SUCCEEDED" },
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.phase1Results",
+      "Next": "ExecutePhase2Batch1",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.phase1Error",
+          "Next": "BlockOnPhaseFailure"
+        }
+      ]
+    },
+
+    "ExecutePhase2Batch1": {
+      "Type": "Map",
+      "Comment": "Phase 2: Non-critical batch execution with MaxConcurrency 5 and BlockOnFailure gate.",
+      "ItemsPath": "$.targetNodes",
+      "MaxConcurrency": 5,
+      "Parameters": {
+        "node.$": "$$.Map.Item.Value",
+        "planId.$": "$.planId",
+        "action.$": "$.action",
+        "changeTicket.$": "$.changeTicket",
+        "workerPackage.$": "$.workerPackage",
+        "documentVersion.$": "$.documentVersion",
+        "rebootPolicy.$": "$.rebootPolicy",
+        "environment.$": "$.environment"
+      },
+      "Iterator": {
+        "StartAt": "FilterPhase2",
+        "States": {
+          "FilterPhase2": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.node.phase",
+                "NumericEquals": 2,
+                "Next": "DispatchPhase2Node"
+              }
+            ],
+            "Default": "SkipNonPhase2Node"
+          },
+          "SkipNonPhase2Node": {
+            "Type": "Pass",
+            "Result": { "status": "SKIPPED_NOT_PHASE_2" },
+            "End": true
+          },
+          "DispatchPhase2Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "computerName.$": "$.node.computerName",
+                "action.$": "$.action",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "workerPackage.$": "$.workerPackage",
+                "documentVersion.$": "$.documentVersion",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.dispatchResult",
+            "Next": "WaitPhase2Execution"
+          },
+          "WaitPhase2Execution": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ReconcilePhase2Node"
+          },
+          "ReconcilePhase2Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.dispatchResult.Payload.commandId",
+                "operationId.$": "$.dispatchResult.Payload.operationId",
+                "owner.$": "$.dispatchResult.Payload.owner",
+                "fencingToken.$": "$.dispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.reconcileResult",
+            "Next": "CheckPhase2Complete"
+          },
+          "CheckPhase2Complete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.reconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase2Execution"
+              },
+              {
+                "Variable": "$.reconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase2NodeFailed"
+              },
+              {
+                "Variable": "$.reconcileResult.Payload.rebootRequired",
+                "BooleanEquals": true,
+                "Next": "CheckPhase2RebootAllowed"
+              }
+            ],
+            "Default": "Phase2NodeSucceeded"
+          },
+          "CheckPhase2RebootAllowed": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.rebootPolicy.rebootAllowed",
+                "BooleanEquals": true,
+                "Next": "DispatchPhase2Reboot"
+              }
+            ],
+            "Default": "Phase2NodeSucceeded"
+          },
+          "DispatchPhase2Reboot": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "action": "Reboot",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "workerPackage.$": "$.workerPackage",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.rebootDispatchResult",
+            "Next": "WaitPhase2Reboot"
+          },
+          "WaitPhase2Reboot": {
+            "Type": "Wait",
+            "Seconds": 30,
+            "Next": "ReconcilePhase2Reboot"
+          },
+          "ReconcilePhase2Reboot": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.rebootDispatchResult.Payload.commandId",
+                "operationId.$": "$.rebootDispatchResult.Payload.operationId",
+                "owner.$": "$.rebootDispatchResult.Payload.owner",
+                "fencingToken.$": "$.rebootDispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.rebootReconcileResult",
+            "Next": "CheckPhase2RebootComplete"
+          },
+          "CheckPhase2RebootComplete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.rebootReconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase2Reboot"
+              },
+              {
+                "Variable": "$.rebootReconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase2NodeFailed"
+              }
+            ],
+            "Default": "DispatchPhase2Verify"
+          },
+          "DispatchPhase2Verify": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "action": "Verify",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "priorBootId.$": "$.rebootReconcileResult.Payload.bootId",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.verifyDispatchResult",
+            "Next": "WaitPhase2Verify"
+          },
+          "WaitPhase2Verify": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ReconcilePhase2Verify"
+          },
+          "ReconcilePhase2Verify": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.verifyDispatchResult.Payload.commandId",
+                "operationId.$": "$.verifyDispatchResult.Payload.operationId",
+                "owner.$": "$.verifyDispatchResult.Payload.owner",
+                "fencingToken.$": "$.verifyDispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.verifyReconcileResult",
+            "Next": "CheckPhase2VerifyComplete"
+          },
+          "CheckPhase2VerifyComplete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.verifyReconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase2Verify"
+              },
+              {
+                "Variable": "$.verifyReconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase2NodeFailed"
+              }
+            ],
+            "Default": "Phase2NodeSucceeded"
+          },
+          "Phase2NodeFailed": {
+            "Type": "Fail",
+            "Error": "Batch2NodeExecutionFailed",
+            "Cause": "Phase 2 node failed during execution or postcheck verification."
+          },
+          "Phase2NodeSucceeded": {
+            "Type": "Pass",
+            "Result": { "status": "SUCCEEDED" },
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.phase2Results",
+      "Next": "ExecutePhase3Batch2",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.phase2Error",
+          "Next": "BlockOnPhaseFailure"
+        }
+      ]
+    },
+
+    "ExecutePhase3Batch2": {
+      "Type": "Map",
+      "Comment": "Phase 3: General member servers batch execution with MaxConcurrency 5 and BlockOnFailure gate.",
+      "ItemsPath": "$.targetNodes",
+      "MaxConcurrency": 5,
+      "Parameters": {
+        "node.$": "$$.Map.Item.Value",
+        "planId.$": "$.planId",
+        "action.$": "$.action",
+        "changeTicket.$": "$.changeTicket",
+        "workerPackage.$": "$.workerPackage",
+        "documentVersion.$": "$.documentVersion",
+        "rebootPolicy.$": "$.rebootPolicy",
+        "environment.$": "$.environment"
+      },
+      "Iterator": {
+        "StartAt": "FilterPhase3",
+        "States": {
+          "FilterPhase3": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.node.phase",
+                "NumericEquals": 3,
+                "Next": "DispatchPhase3Node"
+              }
+            ],
+            "Default": "SkipNonPhase3Node"
+          },
+          "SkipNonPhase3Node": {
+            "Type": "Pass",
+            "Result": { "status": "SKIPPED_NOT_PHASE_3" },
+            "End": true
+          },
+          "DispatchPhase3Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "computerName.$": "$.node.computerName",
+                "action.$": "$.action",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "workerPackage.$": "$.workerPackage",
+                "documentVersion.$": "$.documentVersion",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.dispatchResult",
+            "Next": "WaitPhase3Execution"
+          },
+          "WaitPhase3Execution": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ReconcilePhase3Node"
+          },
+          "ReconcilePhase3Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.dispatchResult.Payload.commandId",
+                "operationId.$": "$.dispatchResult.Payload.operationId",
+                "owner.$": "$.dispatchResult.Payload.owner",
+                "fencingToken.$": "$.dispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.reconcileResult",
+            "Next": "CheckPhase3Complete"
+          },
+          "CheckPhase3Complete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.reconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase3Execution"
+              },
+              {
+                "Variable": "$.reconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase3NodeFailed"
+              },
+              {
+                "Variable": "$.reconcileResult.Payload.rebootRequired",
+                "BooleanEquals": true,
+                "Next": "CheckPhase3RebootAllowed"
+              }
+            ],
+            "Default": "Phase3NodeSucceeded"
+          },
+          "CheckPhase3RebootAllowed": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.rebootPolicy.rebootAllowed",
+                "BooleanEquals": true,
+                "Next": "DispatchPhase3Reboot"
+              }
+            ],
+            "Default": "Phase3NodeSucceeded"
+          },
+          "DispatchPhase3Reboot": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "action": "Reboot",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "workerPackage.$": "$.workerPackage",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.rebootDispatchResult",
+            "Next": "WaitPhase3Reboot"
+          },
+          "WaitPhase3Reboot": {
+            "Type": "Wait",
+            "Seconds": 30,
+            "Next": "ReconcilePhase3Reboot"
+          },
+          "ReconcilePhase3Reboot": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.rebootDispatchResult.Payload.commandId",
+                "operationId.$": "$.rebootDispatchResult.Payload.operationId",
+                "owner.$": "$.rebootDispatchResult.Payload.owner",
+                "fencingToken.$": "$.rebootDispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.rebootReconcileResult",
+            "Next": "CheckPhase3RebootComplete"
+          },
+          "CheckPhase3RebootComplete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.rebootReconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase3Reboot"
+              },
+              {
+                "Variable": "$.rebootReconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase3NodeFailed"
+              }
+            ],
+            "Default": "DispatchPhase3Verify"
+          },
+          "DispatchPhase3Verify": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "action": "Verify",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "priorBootId.$": "$.rebootReconcileResult.Payload.bootId",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.verifyDispatchResult",
+            "Next": "WaitPhase3Verify"
+          },
+          "WaitPhase3Verify": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ReconcilePhase3Verify"
+          },
+          "ReconcilePhase3Verify": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.verifyDispatchResult.Payload.commandId",
+                "operationId.$": "$.verifyDispatchResult.Payload.operationId",
+                "owner.$": "$.verifyDispatchResult.Payload.owner",
+                "fencingToken.$": "$.verifyDispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.verifyReconcileResult",
+            "Next": "CheckPhase3VerifyComplete"
+          },
+          "CheckPhase3VerifyComplete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.verifyReconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase3Verify"
+              },
+              {
+                "Variable": "$.verifyReconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase3NodeFailed"
+              }
+            ],
+            "Default": "Phase3NodeSucceeded"
+          },
+          "Phase3NodeFailed": {
+            "Type": "Fail",
+            "Error": "Batch3NodeExecutionFailed",
+            "Cause": "Phase 3 node failed during execution or postcheck verification."
+          },
+          "Phase3NodeSucceeded": {
+            "Type": "Pass",
+            "Result": { "status": "SUCCEEDED" },
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.phase3Results",
+      "Next": "ExecutePhase4Batch3",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.phase3Error",
+          "Next": "BlockOnPhaseFailure"
+        }
+      ]
+    },
+
+    "ExecutePhase4Batch3": {
+      "Type": "Map",
+      "Comment": "Phase 4: Sensitive member servers batch execution with MaxConcurrency 5 and BlockOnFailure gate.",
+      "ItemsPath": "$.targetNodes",
+      "MaxConcurrency": 5,
+      "Parameters": {
+        "node.$": "$$.Map.Item.Value",
+        "planId.$": "$.planId",
+        "action.$": "$.action",
+        "changeTicket.$": "$.changeTicket",
+        "workerPackage.$": "$.workerPackage",
+        "documentVersion.$": "$.documentVersion",
+        "rebootPolicy.$": "$.rebootPolicy",
+        "environment.$": "$.environment"
+      },
+      "Iterator": {
+        "StartAt": "FilterPhase4",
+        "States": {
+          "FilterPhase4": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.node.phase",
+                "NumericEquals": 4,
+                "Next": "DispatchPhase4Node"
+              }
+            ],
+            "Default": "SkipNonPhase4Node"
+          },
+          "SkipNonPhase4Node": {
+            "Type": "Pass",
+            "Result": { "status": "SKIPPED_NOT_PHASE_4" },
+            "End": true
+          },
+          "DispatchPhase4Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "computerName.$": "$.node.computerName",
+                "action.$": "$.action",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "workerPackage.$": "$.workerPackage",
+                "documentVersion.$": "$.documentVersion",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.dispatchResult",
+            "Next": "WaitPhase4Execution"
+          },
+          "WaitPhase4Execution": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ReconcilePhase4Node"
+          },
+          "ReconcilePhase4Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.dispatchResult.Payload.commandId",
+                "operationId.$": "$.dispatchResult.Payload.operationId",
+                "owner.$": "$.dispatchResult.Payload.owner",
+                "fencingToken.$": "$.dispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.reconcileResult",
+            "Next": "CheckPhase4Complete"
+          },
+          "CheckPhase4Complete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.reconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase4Execution"
+              },
+              {
+                "Variable": "$.reconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase4NodeFailed"
+              },
+              {
+                "Variable": "$.reconcileResult.Payload.rebootRequired",
+                "BooleanEquals": true,
+                "Next": "CheckPhase4RebootAllowed"
+              }
+            ],
+            "Default": "Phase4NodeSucceeded"
+          },
+          "CheckPhase4RebootAllowed": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.rebootPolicy.rebootAllowed",
+                "BooleanEquals": true,
+                "Next": "DispatchPhase4Reboot"
+              }
+            ],
+            "Default": "Phase4NodeSucceeded"
+          },
+          "DispatchPhase4Reboot": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "action": "Reboot",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "workerPackage.$": "$.workerPackage",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.rebootDispatchResult",
+            "Next": "WaitPhase4Reboot"
+          },
+          "WaitPhase4Reboot": {
+            "Type": "Wait",
+            "Seconds": 30,
+            "Next": "ReconcilePhase4Reboot"
+          },
+          "ReconcilePhase4Reboot": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.rebootDispatchResult.Payload.commandId",
+                "operationId.$": "$.rebootDispatchResult.Payload.operationId",
+                "owner.$": "$.rebootDispatchResult.Payload.owner",
+                "fencingToken.$": "$.rebootDispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.rebootReconcileResult",
+            "Next": "CheckPhase4RebootComplete"
+          },
+          "CheckPhase4RebootComplete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.rebootReconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase4Reboot"
+              },
+              {
+                "Variable": "$.rebootReconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase4NodeFailed"
+              }
+            ],
+            "Default": "DispatchPhase4Verify"
+          },
+          "DispatchPhase4Verify": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "action": "Verify",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "priorBootId.$": "$.rebootReconcileResult.Payload.bootId",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.verifyDispatchResult",
+            "Next": "WaitPhase4Verify"
+          },
+          "WaitPhase4Verify": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ReconcilePhase4Verify"
+          },
+          "ReconcilePhase4Verify": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.verifyDispatchResult.Payload.commandId",
+                "operationId.$": "$.verifyDispatchResult.Payload.operationId",
+                "owner.$": "$.verifyDispatchResult.Payload.owner",
+                "fencingToken.$": "$.verifyDispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.verifyReconcileResult",
+            "Next": "CheckPhase4VerifyComplete"
+          },
+          "CheckPhase4VerifyComplete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.verifyReconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase4Verify"
+              },
+              {
+                "Variable": "$.verifyReconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase4NodeFailed"
+              }
+            ],
+            "Default": "Phase4NodeSucceeded"
+          },
+          "Phase4NodeFailed": {
+            "Type": "Fail",
+            "Error": "Batch4NodeExecutionFailed",
+            "Cause": "Phase 4 node failed during execution or postcheck verification."
+          },
+          "Phase4NodeSucceeded": {
+            "Type": "Pass",
+            "Result": { "status": "SUCCEEDED" },
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.phase4Results",
+      "Next": "ExecutePhase5Closure",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.phase4Error",
+          "Next": "BlockOnPhaseFailure"
+        }
+      ]
+    },
+
+    "ExecutePhase5Closure": {
+      "Type": "Map",
+      "Comment": "Phase 5: Post-deployment fleet verification and closure with MaxConcurrency 5.",
+      "ItemsPath": "$.targetNodes",
+      "MaxConcurrency": 5,
+      "Parameters": {
+        "node.$": "$$.Map.Item.Value",
+        "planId.$": "$.planId",
+        "action.$": "$.action",
+        "changeTicket.$": "$.changeTicket",
+        "workerPackage.$": "$.workerPackage",
+        "documentVersion.$": "$.documentVersion",
+        "rebootPolicy.$": "$.rebootPolicy",
+        "environment.$": "$.environment"
+      },
+      "Iterator": {
+        "StartAt": "FilterPhase5",
+        "States": {
+          "FilterPhase5": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.node.phase",
+                "NumericEquals": 5,
+                "Next": "DispatchPhase5Node"
+              }
+            ],
+            "Default": "SkipNonPhase5Node"
+          },
+          "SkipNonPhase5Node": {
+            "Type": "Pass",
+            "Result": { "status": "SKIPPED_NOT_PHASE_5" },
+            "End": true
+          },
+          "DispatchPhase5Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-dispatch-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "computerName.$": "$.node.computerName",
+                "action": "Verify",
+                "planId.$": "$.planId",
+                "changeTicket.$": "$.changeTicket",
+                "workerPackage.$": "$.workerPackage",
+                "documentVersion.$": "$.documentVersion",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.dispatchResult",
+            "Next": "WaitPhase5Execution"
+          },
+          "WaitPhase5Execution": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "ReconcilePhase5Node"
+          },
+          "ReconcilePhase5Node": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName.$": "States.Format('wuu-reconcile-{}', $.environment)",
+              "Payload": {
+                "instanceId.$": "$.node.instanceId",
+                "commandId.$": "$.dispatchResult.Payload.commandId",
+                "operationId.$": "$.dispatchResult.Payload.operationId",
+                "owner.$": "$.dispatchResult.Payload.owner",
+                "fencingToken.$": "$.dispatchResult.Payload.fencingToken",
+                "environment.$": "$.environment"
+              }
+            },
+            "ResultPath": "$.reconcileResult",
+            "Next": "CheckPhase5Complete"
+          },
+          "CheckPhase5Complete": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.reconcileResult.Payload.completed",
+                "BooleanEquals": false,
+                "Next": "WaitPhase5Execution"
+              },
+              {
+                "Variable": "$.reconcileResult.Payload.status",
+                "StringEquals": "FAILED",
+                "Next": "Phase5NodeFailed"
+              }
+            ],
+            "Default": "Phase5NodeSucceeded"
+          },
+          "Phase5NodeFailed": {
+            "Type": "Fail",
+            "Error": "ClosureNodeExecutionFailed",
+            "Cause": "Phase 5 node failed during execution or postcheck verification."
+          },
+          "Phase5NodeSucceeded": {
+            "Type": "Pass",
+            "Result": { "status": "SUCCEEDED" },
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.phase5Results",
+      "Next": "DeploymentSucceeded",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.phase5Error",
+          "Next": "BlockOnPhaseFailure"
+        }
+      ]
+    },
+
+    "BlockOnPhaseFailure": {
+      "Type": "Fail",
+      "Error": "BlockOnFailureTriggered",
+      "Cause": "A target node failed in an earlier phase; BlockOnFailure prevents further phase expansion."
+    },
+
+    "DeploymentValidationFailed": {
+      "Type": "Fail",
+      "Error": "DeploymentValidationFailed",
+      "Cause": "Frozen deployment plan or maintenance window validation failed."
+    },
+
+    "DeploymentSucceeded": {
+      "Type": "Succeed"
+    }
+  }
+}

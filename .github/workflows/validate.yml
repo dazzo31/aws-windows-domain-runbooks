@@ -1,0 +1,41 @@
+name: Offline Pack & Schema Validation
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Runbooks and Tooling
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install NPM Dependencies
+        run: npm ci
+
+      - name: Validate SSM Documents and Runbooks
+        run: node tests/read-documents.cjs
+
+      - name: Validate Planning Traceability Checkpoints
+        run: node tests/validate-planning.cjs
+
+      - name: Run Cloud Orchestration Unit Tests
+        run: node --test tests/fleet-orchestration.test.mjs
+
+      - name: Run PowerShell Pack Invariant Gate
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1
+

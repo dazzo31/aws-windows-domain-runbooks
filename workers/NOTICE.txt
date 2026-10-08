@@ -1,0 +1,1 @@
+﻿WUU2-CLI Local Worker Package - Upstream commit: e81b620905d549783d7e17498a0b3cbbcf5f4095 (MIT License)

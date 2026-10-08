@@ -1,0 +1,47 @@
+schemaVersion: '0.3'
+description: Approval wrapper for one pinned Command document version on one instance. Replace fixed role/approver ARNs before deployment; restrict direct SendCommand through IAM.
+assumeRole: arn:aws:iam::111122223333:role/WinDomainAutomationRole
+parameters:
+  InstanceId:
+    type: String
+    allowedPattern: '^i-([a-f0-9]{8}|[a-f0-9]{17})$'
+  DocumentName:
+    type: String
+    allowedValues: [WinDomain-Users, WinDomain-Groups, WinDomain-Computers, WinDomain-DNS, WinDomain-GPO, WinDomain-WSUSServer, WinDomain-WSUSClient, WinDomain-ADCS, WinDomain-CertificateEnrollment]
+  DocumentVersion:
+    type: String
+    description: Reviewed immutable numeric version, not $LATEST or $DEFAULT.
+    allowedPattern: '^[1-9][0-9]*$'
+  CommandParameters:
+    type: StringMap
+    description: Exact child parameters as string values, including Apply=true and ChangeTicket matching this execution. Never include secrets.
+  ChangeTicket:
+    type: String
+    allowedPattern: '^[A-Za-z0-9._/-]{1,100}$'
+  ChangeDigest:
+    type: String
+    default: none
+    description: Cryptographic hash of change request or approved parameter snapshot.
+    allowedPattern: '^[0-9a-fA-F]{64}|none$'
+mainSteps:
+  - name: Approve
+    action: aws:approve
+    timeoutSeconds: 86400
+    onFailure: Abort
+    inputs:
+      Message: 'Review execution inputs, child parameter map, target instance, digest ({{ ChangeDigest }}), and document version before approving ticket {{ ChangeTicket }}. Document={{ DocumentName }} version={{ DocumentVersion }} target={{ InstanceId }}.'
+      MinRequiredApprovals: 1
+      Approvers:
+        - arn:aws:iam::111122223333:role/WinDomainChangeApprover
+  - name: Execute
+    action: aws:runCommand
+    maxAttempts: 1
+    timeoutSeconds: 15000
+    onFailure: Abort
+    isEnd: true
+    inputs:
+      DocumentName: '{{ DocumentName }}'
+      DocumentVersion: '{{ DocumentVersion }}'
+      InstanceIds:
+        - '{{ InstanceId }}'
+      Parameters: '{{ CommandParameters }}'

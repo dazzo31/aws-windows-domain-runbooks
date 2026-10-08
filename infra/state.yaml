@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  WUU2-CLI Durable State and Lock Infrastructure.
+  Defines encrypted DynamoDB table for distributed operation tracking,
+  mutual-exclusion node locking, and fencing tokens with Point-In-Time Recovery.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: lab
+    AllowedValues: [lab, staging, prod]
+    Description: Target deployment environment name.
+
+  KmsKeyArn:
+    Type: String
+    Default: "arn:aws:kms:us-east-1:123456789012:key/wuu-kms-key"
+    Description: KMS key ARN for table server-side encryption.
+
+Resources:
+  # ===============================================================================================
+  # DynamoDB Operations and Locks Table
+  # ===============================================================================================
+  OperationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "wuu-operations-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref KmsKeyArn
+      TimeToLiveSpecification:
+        AttributeName: RecordTtl
+        Enabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "wuu-operations-${Environment}"
+        - Key: ManagedBy
+          Value: WUU2-CLI-AWS
+
+Outputs:
+  OperationsTableName:
+    Value: !Ref OperationsTable
+    Export:
+      Name: !Sub "${Environment}-WuuOperationsTableName"
+  OperationsTableArn:
+    Value: !GetAtt OperationsTable.Arn
+    Export:
+      Name: !Sub "${Environment}-WuuOperationsTableArn"
+

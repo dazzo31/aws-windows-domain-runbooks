@@ -1,0 +1,218 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  WUU2-CLI Storage Infrastructure.
+  Defines encrypted, versioned S3 bucket for immutable worker packages,
+  execution plans, and result artifacts with TLS-only enforcement and access logging.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: lab
+    AllowedValues: [lab, staging, prod]
+    Description: Target deployment environment name.
+
+  KmsKeyArn:
+    Type: String
+    Default: "arn:aws:kms:us-east-1:123456789012:key/wuu-kms-key"
+    Description: KMS key ARN for bucket server-side encryption.
+
+  NoncurrentVersionRetentionDays:
+    Type: Number
+    Default: 90
+    Description: Days to retain noncurrent versions of artifacts and results.
+
+  EnableObjectLock:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Enable S3 Object Lock retention on artifacts bucket (F4).
+
+  ObjectLockMode:
+    Type: String
+    Default: "GOVERNANCE"
+    AllowedValues: ["GOVERNANCE", "COMPLIANCE"]
+    Description: S3 Object Lock retention mode (GOVERNANCE for operations, COMPLIANCE for immutable audit).
+
+  ObjectLockRetentionDays:
+    Type: Number
+    Default: 90
+    Description: Retention period in days for Object Lock protected artifacts.
+
+  EnableReplication:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Enable Cross-Region Replication (CRR) for immutable disaster recovery (F4).
+
+  ReplicationRoleArn:
+    Type: String
+    Default: ""
+    Description: IAM Role ARN permitted to replicate objects across regions.
+
+  ReplicationDestinationBucketArn:
+    Type: String
+    Default: ""
+    Description: Destination S3 Bucket ARN in replica disaster recovery region.
+
+Conditions:
+  IsObjectLockEnabled: !Equals [!Ref EnableObjectLock, "true"]
+  IsReplicationEnabled: !Equals [!Ref EnableReplication, "true"]
+
+Resources:
+  # ===============================================================================================
+  # S3 Access Logs Bucket
+  # ===============================================================================================
+  AccessLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "wuu-access-logs-${Environment}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldLogs
+            Status: Enabled
+            ExpirationInDays: 365
+
+  AccessLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AccessLogsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnforceTlsOnly
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${AccessLogsBucket}"
+              - !Sub "arn:aws:s3:::${AccessLogsBucket}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+          - Sid: EnforceTlsVersion
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${AccessLogsBucket}"
+              - !Sub "arn:aws:s3:::${AccessLogsBucket}/*"
+            Condition:
+              NumericLessThan:
+                s3:TlsVersion: 1.2
+
+  # ===============================================================================================
+  # Primary Artifacts & Results Bucket
+  # ===============================================================================================
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "wuu-artifacts-${Environment}-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      ObjectLockEnabled: !If [IsObjectLockEnabled, true, false]
+      ObjectLockConfiguration:
+        !If
+          - IsObjectLockEnabled
+          - ObjectLockRule:
+              DefaultRetention:
+                Mode: !Ref ObjectLockMode
+                Days: !Ref ObjectLockRetentionDays
+          - !Ref "AWS::NoValue"
+      ReplicationConfiguration:
+        !If
+          - IsReplicationEnabled
+          - Role: !Ref ReplicationRoleArn
+            Rules:
+              - Id: CrossRegionReplication
+                Status: Enabled
+                Priority: 1
+                DeleteMarkerReplication:
+                  Status: Disabled
+                Filter:
+                  Prefix: ""
+                Destination:
+                  Bucket: !Ref ReplicationDestinationBucketArn
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyId: !Ref KmsKeyArn
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLogsBucket
+        LogFilePrefix: "artifacts-access-logs/"
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanupOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: !Ref NoncurrentVersionRetentionDays
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  ArtifactsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnforceTlsOnly
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${ArtifactsBucket}"
+              - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+          - Sid: EnforceTlsVersion
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${ArtifactsBucket}"
+              - !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+            Condition:
+              NumericLessThan:
+                s3:TlsVersion: 1.2
+
+          - Sid: DenyUnencryptedUploads
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:PutObject"
+            Resource: !Sub "arn:aws:s3:::${ArtifactsBucket}/*"
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: "aws:kms"
+
+Outputs:
+  ArtifactsBucketName:
+    Value: !Ref ArtifactsBucket
+    Export:
+      Name: !Sub "${Environment}-WuuArtifactsBucketName"
+  ArtifactsBucketArn:
+    Value: !GetAtt ArtifactsBucket.Arn
+    Export:
+      Name: !Sub "${Environment}-WuuArtifactsBucketArn"
+  AccessLogsBucketName:
+    Value: !Ref AccessLogsBucket
+    Export:
+      Name: !Sub "${Environment}-WuuAccessLogsBucketName"
+

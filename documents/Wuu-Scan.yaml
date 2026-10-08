@@ -1,0 +1,48 @@
+schemaVersion: '2.2'
+description: Dispatches noninteractive WSUS update scan on managed nodes via local WUA module.
+parameters:
+  OperationId:
+    type: String
+    default: op-scan-default
+    allowedPattern: '^[A-Za-z0-9._/-]{1,100}$'
+    interpolationType: ENV_VAR
+  ExpectedWsusUrl:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/:-]{0,255}$'
+    interpolationType: ENV_VAR
+  Criteria:
+    type: String
+    default: 'IsInstalled=0 and IsHidden=0'
+    allowedPattern: '^[A-Za-z0-9 =._/-]{1,200}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: WuuScan
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '600'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:SSM_OperationId -or !$env:SSM_Criteria) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+
+          # Ensure WUU directories
+          $wuuDir = 'C:\ProgramData\WUU'
+          $workerScript = Join-Path $wuuDir 'workers\Invoke-WuuWorker.ps1'
+
+          if (Test-Path $workerScript) {
+              & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $workerScript `
+                  -OperationId $env:SSM_OperationId -Action 'Scan' -ExpectedWsusUrl $env:SSM_ExpectedWsusUrl
+              exit $LASTEXITCODE
+          } else {
+              # Inline fallback scan if worker package not yet unpacked
+              $session = New-Object -ComObject 'Microsoft.Update.Session'
+              $searcher = $session.CreateUpdateSearcher()
+              $searcher.ServerSelection = 2
+              $res = $searcher.Search($env:SSM_Criteria)
+              Write-Output "SCAN_RESULT: Found $($res.Updates.Count) applicable updates from WSUS."
+              exit 0
+          }
+

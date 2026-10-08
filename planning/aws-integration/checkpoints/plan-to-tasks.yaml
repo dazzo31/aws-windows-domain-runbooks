@@ -1,0 +1,132 @@
+metadata:
+  generated: '2026-10-06'
+  source_plan: '../plan.md'
+  target_tasks: '../plan.md'
+summary:
+  total_plan_items: 15
+  covered_plan_items: 15
+  missing_plan_items: 0
+  coverage_percentage: 100.0
+  total_tasks_generated: 62
+  orphan_tasks: 0
+phases:
+  - phase_id: Phase-1
+    phase_name: Adoption and connectivity
+    items:
+      - item_id: '1.1'
+        description: Freeze scope and development baseline.
+        tasks: [{task_id: T001}, {task_id: T002}, {task_id: T003}, {task_id: T004}]
+      - item_id: '1.2'
+        description: Qualify network and node bootstrap.
+        tasks: [{task_id: T005}, {task_id: T006}, {task_id: T007}, {task_id: T008}]
+  - phase_id: Phase-2
+    phase_name: Security artifacts and state
+    items:
+      - item_id: '2.1'
+        description: Enforce identity boundaries.
+        tasks: [{task_id: T009}, {task_id: T010}, {task_id: T011}, {task_id: T012}]
+      - item_id: '2.2'
+        description: Publish immutable artifacts.
+        tasks: [{task_id: T013}, {task_id: T014}, {task_id: T015}, {task_id: T016}]
+      - item_id: '2.3'
+        description: Establish operation and lock records.
+        tasks: [{task_id: T017}, {task_id: T018}, {task_id: T019}, {task_id: T020}]
+  - phase_id: Phase-3
+    phase_name: Local WSUS worker
+    items:
+      - item_id: '3.1'
+        description: Extract noninteractive worker contract.
+        tasks: [{task_id: T021}, {task_id: T022}, {task_id: T023}, {task_id: T024}]
+      - item_id: '3.2'
+        description: Enforce managed WSUS source and selection.
+        tasks: [{task_id: T025}, {task_id: T026}, {task_id: T027}, {task_id: T028}]
+  - phase_id: Phase-4
+    phase_name: Approval and WUU adapter
+    items:
+      - item_id: '4.1'
+        description: Bind approval to a frozen plan.
+        tasks: [{task_id: T029}, {task_id: T030}, {task_id: T031}, {task_id: T032}, {task_id: T033}]
+      - item_id: '4.2'
+        description: Implement standalone cloud deployment client and status tools.
+        tasks: [{task_id: T034}, {task_id: T035}, {task_id: T036}, {task_id: T037}]
+  - phase_id: Phase-5
+    phase_name: Fleet and reboot lifecycle
+    items:
+      - item_id: '5.1'
+        description: Implement durable phase coordination.
+        tasks: [{task_id: T038}, {task_id: T039}, {task_id: T040}, {task_id: T041}, {task_id: T042}]
+      - item_id: '5.2'
+        description: Separately approved reboot and closure.
+        tasks: [{task_id: T043}, {task_id: T044}, {task_id: T045}, {task_id: T046}]
+  - phase_id: Phase-6
+    phase_name: Domain workflows and evidence
+    items:
+      - item_id: '6.1'
+        description: Productionise administrative documents.
+        tasks: [{task_id: T047}, {task_id: T048}, {task_id: T049}, {task_id: T050}]
+      - item_id: '6.2'
+        description: Central audit alerts and support.
+        tasks: [{task_id: T051}, {task_id: T052}, {task_id: T053}, {task_id: T054}]
+  - phase_id: Phase-7
+    phase_name: Qualification and release
+    items:
+      - item_id: '7.1'
+        description: End-to-end and regression qualification.
+        tasks: [{task_id: T055}, {task_id: T056}, {task_id: T057}, {task_id: T058}]
+      - item_id: '7.2'
+        description: Safe promotion and operational handover.
+        tasks: [{task_id: T059}, {task_id: T060}, {task_id: T061}, {task_id: T062}]
+missing_plan_items: []
+orphan_tasks: []
+upstream_trace:
+  - plan_item: '1.1'
+    source_requirements: [REQ-002, REQ-017, REQ-018]
+    tasks: [T001, T002, T003, T004]
+  - plan_item: '1.2'
+    source_requirements: [REQ-009, REQ-015]
+    tasks: [T005, T006, T007, T008]
+  - plan_item: '2.1'
+    source_requirements: [REQ-007, REQ-017]
+    tasks: [T009, T010, T011, T012]
+  - plan_item: '2.2'
+    source_requirements: [REQ-008, REQ-014]
+    tasks: [T013, T014, T015, T016]
+  - plan_item: '2.3'
+    source_requirements: [REQ-010, REQ-011]
+    tasks: [T017, T018, T019, T020]
+  - plan_item: '3.1'
+    source_requirements: [REQ-004, REQ-005]
+    tasks: [T021, T022, T023, T024]
+  - plan_item: '3.2'
+    source_requirements: [REQ-001, REQ-004, REQ-005]
+    tasks: [T025, T026, T027, T028]
+  - plan_item: '4.1'
+    source_requirements: [REQ-006, REQ-009, REQ-011]
+    tasks: [T029, T030, T031, T032, T033]
+  - plan_item: '4.2'
+    source_requirements: [REQ-002, REQ-003, REQ-009]
+    tasks: [T034, T035, T036, T037]
+  - plan_item: '5.1'
+    source_requirements: [REQ-003, REQ-010, REQ-011, REQ-012]
+    tasks: [T038, T039, T040, T041, T042]
+  - plan_item: '5.2'
+    source_requirements: [REQ-013, REQ-019]
+    tasks: [T043, T044, T045, T046]
+  - plan_item: '6.1'
+    source_requirements: [REQ-006, REQ-007, REQ-010, REQ-016]
+    tasks: [T047, T048, T049, T050]
+  - plan_item: '6.2'
+    source_requirements: [REQ-014, REQ-020]
+    tasks: [T051, T052, T053, T054]
+  - plan_item: '7.1'
+    source_requirements: [REQ-001, REQ-002, REQ-018]
+    tasks: [T055, T056, T057, T058]
+  - plan_item: '7.2'
+    source_requirements: [REQ-017, REQ-019, REQ-020]
+    tasks: [T059, T060, T061, T062]
+validation:
+  passed: true
+  scope: Planned task coverage only; all implementation tasks remain unchecked.
+  errors: []
+  warnings:
+    - Live AWS Windows WSUS AD and CA qualification is future work.

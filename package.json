@@ -1,0 +1,13 @@
+{
+  "name": "aws-windows-domain-runbooks",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1",
+    "test:pack": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1",
+    "test:documents": "node tests/read-documents.cjs",
+    "test:planning": "node tests/validate-planning.cjs",
+    "validate": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1"
+  },
+  "devDependencies": { "yaml": "^2.8.1" }
+}

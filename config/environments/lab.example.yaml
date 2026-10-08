@@ -1,0 +1,165 @@
+# Environment Adoption Configuration Example: Lab
+# This file defines the baseline adoption parameters for an AWS-integrated Windows domain patching lab.
+# IMPORTANT: This is a template containing placeholder values. Deployment scripts MUST validate and
+# refuse placeholder values before provisioning or executing operations.
+# See runbooks/ENVIRONMENT-ADOPTION.md for adoption procedures and validation rules.
+
+schemaVersion: "1.0.0"
+environment: "lab"
+status: "template"
+
+# -------------------------------------------------------------------------------------------------
+# 1. AWS Account & Infrastructure Scope
+# -------------------------------------------------------------------------------------------------
+aws:
+  # MUST be replaced with your real 12-digit AWS account ID before deployment
+  accountId: "123456789012" # PLACEHOLDER: Refused on deployment if unchanged
+  region: "us-east-1"
+  partition: "aws"
+  vpcId: "vpc-0123456789abcdef0" # PLACEHOLDER
+  privateSubnetIds:
+    - "subnet-0123456789abcdef1" # PLACEHOLDER
+    - "subnet-0123456789abcdef2" # PLACEHOLDER
+  endpoints:
+    ssm: "vpce-0123456789abcdefa" # PLACEHOLDER
+    ssmmessages: "vpce-0123456789abcdefb" # PLACEHOLDER
+    logs: "vpce-0123456789abcdefc" # PLACEHOLDER
+    s3Gateway: "vpce-0123456789abcdefd" # PLACEHOLDER
+
+# -------------------------------------------------------------------------------------------------
+# 2. Ownership & Accountability
+# -------------------------------------------------------------------------------------------------
+ownership:
+  technicalContact: "sysadmin@example.local" # PLACEHOLDER
+  operationsOwner: "windows-ops@example.local" # PLACEHOLDER
+  securityApprover: "security-leads@example.local" # PLACEHOLDER
+  costCenter: "INFRA-LAB-PATCHING"
+
+# -------------------------------------------------------------------------------------------------
+# 3. Upstream WUU2-CLI Provenance (Decoupled Consumer Model)
+# -------------------------------------------------------------------------------------------------
+upstream:
+  project: "WUU2-CLI"
+  repository: "https://github.com/dazzo31/WUU2-CLI.git"
+  pinnedCommit: "e81b620905d549783d7e17498a0b3cbbcf5f4095"
+  pinnedTag: "v1.5.0-rc.4-cli"
+  license: "MIT"
+  decoupledModel: true # WUU2-CLI remains untouched; packaged via Build-WorkerPackage.ps1
+
+# -------------------------------------------------------------------------------------------------
+# 4. Windows & Runtime Support Matrix
+# -------------------------------------------------------------------------------------------------
+supportMatrix:
+  windowsOperatingSystems:
+    - name: "Windows Server 2022 Datacenter"
+      build: 20348
+      supported: true
+    - name: "Windows Server 2019 Datacenter"
+      build: 17763
+      supported: true
+    - name: "Windows Server 2025 Datacenter"
+      build: 26100
+      supported: true
+    - name: "Windows Server 2016"
+      supported: false # Deprecated / unsupported
+    - name: "Windows Client (10/11)"
+      supported: false # Server domain member fleet only
+  powershell:
+    engine: "Windows PowerShell 5.1"
+    requiredApartmentState: "STA"
+    executionPolicy: "Bypass"
+    nonInteractiveOnly: true
+  ssmAgent:
+    minimumVersion: "3.3.2746.0"
+  cloudHandlers:
+    lambdaRuntime: "nodejs20.x"
+    awsSdkVersion: "v3"
+
+# -------------------------------------------------------------------------------------------------
+# 5. WSUS Authority & Update Source Constraints (Strictly Enforced)
+# -------------------------------------------------------------------------------------------------
+wsus:
+  authorityOnly: true # WSUS is sole authority; no AWS Patch Baselines
+  serverSelection: "ssManagedServer"
+  allowMicrosoftUpdateFallback: false
+  allowPatchManager: false
+  serverUrl: "https://wsus.example.local:8531" # PLACEHOLDER
+  targetGroup: "Lab-MemberServers"
+  contentHosting: "locally_stored" # Rejects external payload downloads in lab
+  tls:
+    enforceHttps: true
+    validateCertificateChain: true
+    expectedPort: 8531
+    trustedRootThumbprint: "0123456789ABCDEF0123456789ABCDEF01234567" # PLACEHOLDER
+
+# -------------------------------------------------------------------------------------------------
+# 6. Node Classes & Scope Segregation
+# -------------------------------------------------------------------------------------------------
+nodeClasses:
+  memberServer:
+    description: "General domain member servers eligible for automated phased patch management"
+    eligibleForFleetPatching: true
+    eligibleForDirectReboot: true
+    maxRebootsPerDeployment: 1
+    requiredTags:
+      Environment: "lab"
+      PatchGroup: "member-servers"
+  domainController:
+    description: "Tier 0 Active Directory Domain Controllers"
+    eligibleForFleetPatching: false # Strictly excluded from generic fleet automation
+    eligibleForDirectReboot: false
+    requiredTags:
+      Role: "DomainController"
+  certificateAuthority:
+    description: "Active Directory Certificate Services (AD CS) Root/Issuing CAs"
+    eligibleForFleetPatching: false # Strictly excluded from generic fleet automation
+    eligibleForDirectReboot: false
+    requiredTags:
+      Role: "CertificateAuthority"
+  clusterNode:
+    description: "Failover clustering or high-availability application nodes"
+    eligibleForFleetPatching: false # Requires manual drain/failover verification ceremonies
+    eligibleForDirectReboot: false
+
+# -------------------------------------------------------------------------------------------------
+# 7. Phased Fleet Deployment & Safety Policies
+# -------------------------------------------------------------------------------------------------
+deployment:
+  phases:
+    totalPhases: 5
+    concurrencyPerPhase: 10
+    blockOnPhaseFailure: true # Next phase does not start if any node in previous phase fails
+    canaryPhase: 1 # Phase 1 serves as initial canary
+  servicingLock:
+    namedMutex: "Global\\WUU_Servicing_Lock"
+    journalPath: "C:\\ProgramData\\WUU\\active-operation.json"
+    detectNativeLocks: true # Checks TrustedInstaller / usoclient before WUA acquisition
+    serviceStopBackoffSeconds: 30
+  executionTimeouts:
+    installTimeoutSeconds: 7200 # 2 hours max per node installation
+    rebootTimeoutSeconds: 1800  # 30 minutes max for restart & verification postcheck
+    minDiskFreeSpaceGB: 20      # Pre-flight check before patch installation
+  rebootPolicy:
+    mode: "separate_approval_required" # Installs NEVER reboot implicitly
+    rebootCommandCode: 3010
+    maxRebootsPerNode: 1
+    captureConsoleOnTimeout: true # Automated ec2:GetConsoleOutput triage on boot hang
+
+# -------------------------------------------------------------------------------------------------
+# 8. Security & IAM Execution Roles
+# -------------------------------------------------------------------------------------------------
+iam:
+  approverRoleArn: "arn:aws:iam::123456789012:role/WuuApproverRole" # PLACEHOLDER
+  operatorRoleArn: "arn:aws:iam::123456789012:role/WuuOperatorRole" # PLACEHOLDER
+  executionRoleArn: "arn:aws:iam::123456789012:role/WuuAutomationExecutionRole" # PLACEHOLDER
+  nodeInstanceProfileArn: "arn:aws:iam::123456789012:instance-profile/WuuManagedInstanceProfile" # PLACEHOLDER
+
+# -------------------------------------------------------------------------------------------------
+# 9. Audit & Evidence Retention
+# -------------------------------------------------------------------------------------------------
+observability:
+  evidenceBucket: "wuu-patch-evidence-123456789012-us-east-1" # PLACEHOLDER
+  cloudWatchLogGroup: "/aws/wuu/patch-operations"
+  retentionDays: 90
+  kmsKeyArn: "arn:aws:kms:us-east-1:123456789012:key/01234567-89ab-cdef-0123-456789abcdef" # PLACEHOLDER
+

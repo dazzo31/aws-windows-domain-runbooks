@@ -1,0 +1,119 @@
+metadata:
+  generated: '2026-10-06'
+  source_spec: '../../../README.md'
+  source_context: User requirements and existing operational runbooks; IDs assigned in plan.md.
+  target_plan: '../plan.md'
+summary:
+  total_requirements: 20
+  covered_requirements: 20
+  missing_requirements: 0
+  coverage_percentage: 100.0
+requirements:
+  - req_id: REQ-001
+    req_description: WSUS-only update authority, no Patch Manager or Microsoft Update scan fallback.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '3.2'}, {item_id: '7.1'}]
+  - req_id: REQ-002
+    req_description: AWS integration is decoupled; WUU2-CLI remains untouched as an independent upstream tool, and all AWS orchestration lives in this repository.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '1.1'}, {item_id: '4.2'}, {item_id: '7.1'}]
+  - req_id: REQ-003
+    req_description: SSM submit/status/results survive client disconnection.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '4.2'}, {item_id: '5.1'}]
+  - req_id: REQ-004
+    req_description: Local STA noninteractive workers without remote DCOM dispatch.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '3.1'}, {item_id: '3.2'}]
+  - req_id: REQ-005
+    req_description: Honest per-update/per-node structured outcomes.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '3.1'}, {item_id: '3.2'}]
+  - req_id: REQ-006
+    req_description: Immutable approval binds actions/updates/targets/parameters/releases and tickets.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '4.1'}, {item_id: '6.1'}]
+  - req_id: REQ-007
+    req_description: Least-privilege IAM and Windows service delegation.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '2.1'}, {item_id: '6.1'}]
+  - req_id: REQ-008
+    req_description: Immutable approved artifact/document provenance and integrity.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '2.2'}]
+  - req_id: REQ-009
+    req_description: Exact instance/domain identity and approved target snapshot.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '1.2'}, {item_id: '4.1'}, {item_id: '4.2'}]
+  - req_id: REQ-010
+    req_description: Durable cloud and local cross-transport admission/locks.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '2.3'}, {item_id: '5.1'}, {item_id: '6.1'}]
+  - req_id: REQ-011
+    req_description: Safe idempotency, uncertain-outcome reconciliation and cancellation.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '2.3'}, {item_id: '4.1'}, {item_id: '5.1'}]
+  - req_id: REQ-012
+    req_description: Five phases, canary/concurrency/stop policy and maintenance cutoffs.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '5.1'}]
+  - req_id: REQ-013
+    req_description: Separately approved journalled reboot with independent closure.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '5.2'}]
+  - req_id: REQ-014
+    req_description: Central attributable secret-free audit and detailed results.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '2.2'}, {item_id: '6.2'}]
+  - req_id: REQ-015
+    req_description: Qualified AWS/AD DNS/WSUS private connectivity and TLS.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '1.2'}]
+  - req_id: REQ-016
+    req_description: Scope and productionise requested domain/WSUS/PKI workflows.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '6.1'}]
+  - req_id: REQ-017
+    req_description: Reproducible environment deployment and narrow secret handling.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '1.1'}, {item_id: '2.1'}, {item_id: '7.2'}]
+  - req_id: REQ-018
+    req_description: Offline/contract/live/security/recovery and DCOM regression gates.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '1.1'}, {item_id: '7.1'}]
+  - req_id: REQ-019
+    req_description: Rehearsed operation recovery and immutable release rollback.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '5.2'}, {item_id: '7.2'}]
+  - req_id: REQ-020
+    req_description: Operational alerts, retained evidence, support and cost controls.
+    priority: P1
+    plan_mapping:
+      items: [{item_id: '6.2'}, {item_id: '7.2'}]
+missing_requirements: []
+orphan_plan_items: []
+validation:
+  passed: true
+  scope: Planning traceability only; no live implementation or production qualification.
+  errors: []
+  warnings:
+    - Environment adoption inputs and G0 signoff are required before provisioning.

@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  WUU2-CLI Fleet Sequencing and Durable Orchestration Infrastructure.
+  Defines Step Functions Standard state machine, execution role,
+  and CloudWatch Log Group for phased fleet deployment coordination.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: lab
+    AllowedValues: [lab, staging, prod]
+    Description: Target deployment environment name.
+
+  KmsKeyArn:
+    Type: String
+    Default: "arn:aws:kms:us-east-1:123456789012:key/wuu-kms-key"
+    Description: KMS key ARN for log group encryption and state security.
+
+  ArtifactBucketArn:
+    Type: String
+    Default: "arn:aws:s3:::wuu-artifacts-lab-123456789012"
+    Description: S3 bucket ARN for deployment plans and result artifacts.
+
+  StateTableArn:
+    Type: String
+    Default: "arn:aws:dynamodb:us-east-1:123456789012:table/wuu-operations-lab"
+    Description: DynamoDB table ARN for distributed locks and operation tracking.
+
+  CoordinatorRoleArn:
+    Type: String
+    Default: "arn:aws:iam::123456789012:role/wuu-coordinator-lab"
+    Description: ARN of the WUU Coordinator role for SSM SendCommand and Lambda dispatch.
+
+Resources:
+  # ===============================================================================================
+  # CloudWatch Log Group for Step Functions Execution Traces
+  # ===============================================================================================
+  WuuDeploymentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/wuu-deployment-${Environment}"
+      KmsKeyId: !Ref KmsKeyArn
+      RetentionInDays: 30
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: WuuOrchestration
+
+  # ===============================================================================================
+  # Step Functions Execution Role
+  # ===============================================================================================
+  WuuDeploymentStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "wuu-stepfunctions-execution-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: WuuStateMachineExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowCloudWatchLogsDelivery
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogDelivery"
+                  - "logs:GetLogDelivery"
+                  - "logs:UpdateLogDelivery"
+                  - "logs:DeleteLogDelivery"
+                  - "logs:ListLogDeliveries"
+                  - "logs:PutResourcePolicy"
+                  - "logs:DescribeResourcePolicies"
+                  - "logs:DescribeLogGroups"
+                Resource: "*"
+              - Sid: AllowInvokeOrchestrationLambdas
+                Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource:
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:wuu-dispatch-${Environment}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:wuu-reconcile-${Environment}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:wuu-cancel-${Environment}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:wuu-validate-plan-${Environment}"
+              - Sid: AllowStateTableAccess
+                Effect: Allow
+                Action:
+                  - "dynamodb:GetItem"
+                  - "dynamodb:PutItem"
+                  - "dynamodb:UpdateItem"
+                  - "dynamodb:Query"
+                Resource:
+                  - !Ref StateTableArn
+                  - !Sub "${StateTableArn}/index/*"
+
+  # ===============================================================================================
+  # Step Functions State Machine: 5-Phase Fleet Sequencing
+  # ===============================================================================================
+  WuuDeploymentStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub "wuu-deployment-${Environment}"
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt WuuDeploymentStateMachineRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt WuuDeploymentLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      DefinitionString: !Sub |
+        {
+          "Comment": "WUU2-CLI Phased Fleet Deployment State Machine",
+          "StartAt": "ValidateDeploymentWindow",
+          "States": {
+            "ValidateDeploymentWindow": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:wuu-validate-plan-${Environment}",
+              "Next": "ExecutePhase1Canary",
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "DeploymentFailed"
+                }
+              ]
+            },
+            "ExecutePhase1Canary": {
+              "Type": "Pass",
+              "Comment": "Phase 1 Canary execution gate",
+              "Next": "ExecutePhase2Batch1"
+            },
+            "ExecutePhase2Batch1": {
+              "Type": "Pass",
+              "Comment": "Phase 2 Non-critical workloads",
+              "Next": "ExecutePhase3Batch2"
+            },
+            "ExecutePhase3Batch2": {
+              "Type": "Pass",
+              "Comment": "Phase 3 General member servers",
+              "Next": "ExecutePhase4Batch3"
+            },
+            "ExecutePhase4Batch3": {
+              "Type": "Pass",
+              "Comment": "Phase 4 Sensitive member servers",
+              "Next": "ExecutePhase5Closure"
+            },
+            "ExecutePhase5Closure": {
+              "Type": "Pass",
+              "Comment": "Phase 5 Post-deployment verification and fleet closure",
+              "Next": "DeploymentSucceeded"
+            },
+            "DeploymentSucceeded": {
+              "Type": "Succeed"
+            },
+            "DeploymentFailed": {
+              "Type": "Fail",
+              "Cause": "Phase execution failed or gate blocked",
+              "Error": "DeploymentBlocked"
+            }
+          }
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: WuuOrchestration
+
+Outputs:
+  StateMachineArn:
+    Description: ARN of the WUU fleet deployment Step Functions state machine.
+    Value: !Ref WuuDeploymentStateMachine
+    Export:
+      Name: !Sub "${AWS::StackName}-StateMachineArn"
+
+  StateMachineRoleArn:
+    Description: ARN of the Step Functions execution role.
+    Value: !GetAtt WuuDeploymentStateMachineRole.Arn
+
+  LogGroupArn:
+    Description: ARN of the Step Functions CloudWatch Log Group.
+    Value: !GetAtt WuuDeploymentLogGroup.Arn
+

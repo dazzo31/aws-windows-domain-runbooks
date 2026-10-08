@@ -1,0 +1,361 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  WUU2-CLI Identity Boundaries and Role Segregation.
+  Defines least-privilege IAM roles: Operator, Approver, Publisher,
+  Automation Service, Coordinator, Managed Node, and AD Password Worker.
+  Enforces anti-tag-tampering, node-class resource scoping, and scoped PassRole.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: lab
+    AllowedValues: [lab, staging, prod]
+    Description: Deployment environment name.
+
+  KmsKeyArn:
+    Type: String
+    Default: "arn:aws:kms:us-east-1:123456789012:key/wuu-kms-key"
+    Description: KMS key ARN for encrypted state, artifacts, and parameters.
+
+  ArtifactBucketArn:
+    Type: String
+    Default: "arn:aws:s3:::wuu-artifacts-lab-123456789012"
+    Description: S3 bucket ARN for versioned worker packages, plans, and results.
+
+  StateTableArn:
+    Type: String
+    Default: "arn:aws:dynamodb:us-east-1:123456789012:table/wuu-operations-lab"
+    Description: DynamoDB table ARN for distributed locks and operation tracking.
+
+Resources:
+  # ===============================================================================================
+  # 1. OPERATOR ROLE: Submits deployment plans; denied direct command execution
+  # ===============================================================================================
+  WuuOperatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "wuu-operator-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: WuuOperatorPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowStartApprovedAutomation
+                Effect: Allow
+                Action:
+                  - "ssm:StartAutomationExecution"
+                  - "ssm:GetAutomationExecution"
+                  - "ssm:DescribeAutomationExecutions"
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/Wuu-ApprovedDeployment:*"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/WinDomain-ApprovedChange:*"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-execution/*"
+              - Sid: AllowScopedPassRoleToAutomation
+                Effect: Allow
+                Action: "iam:PassRole"
+                Resource: !GetAtt WuuAutomationServiceRole.Arn
+                Condition:
+                  StringEquals:
+                    "iam:PassedToService": "ssm.amazonaws.com"
+              - Sid: DenyDirectMutationsAndArbitraryExecution
+                Effect: Deny
+                Action:
+                  - "ssm:SendCommand"
+                  - "lambda:InvokeFunction"
+                  - "states:StartExecution"
+                  - "ec2:CreateTags"
+                  - "ec2:DeleteTags"
+                  - "ssm:CreateDocument"
+                  - "ssm:UpdateDocument"
+                  - "ssm:DeleteDocument"
+                Resource: "*"
+
+  # ===============================================================================================
+  # 2. APPROVER ROLE: Evaluates frozen plans and signals approval; independent of operator
+  # ===============================================================================================
+  WuuApproverRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "wuu-approver-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: WuuApproverPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowSignalAutomation
+                Effect: Allow
+                Action:
+                  - "ssm:SendAutomationSignal"
+                  - "ssm:GetAutomationExecution"
+                  - "ssm:DescribeAutomationExecutions"
+                  - "ssm:DescribeAutomationStepExecutions"
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-execution/*"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/Wuu-ApprovedDeployment:*"
+              - Sid: AllowReadPlanArtifacts
+                Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                Resource: !Sub "${ArtifactBucketArn}/plans/*"
+              - Sid: DenyDirectExecution
+                Effect: Deny
+                Action:
+                  - "ssm:SendCommand"
+                  - "ssm:StartAutomationExecution"
+                  - "states:StartExecution"
+                Resource: "*"
+
+  # ===============================================================================================
+  # 3. PUBLISHER ROLE: Publishes reviewed document versions and immutable worker artifacts
+  # ===============================================================================================
+  WuuPublisherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "wuu-publisher-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: WuuPublisherPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowDocumentPublishing
+                Effect: Allow
+                Action:
+                  - "ssm:CreateDocument"
+                  - "ssm:UpdateDocument"
+                  - "ssm:UpdateDocumentDefaultVersion"
+                  - "ssm:DescribeDocument"
+                  - "ssm:GetDocument"
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/Wuu-*"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/WinDomain-*"
+              - Sid: AllowWorkerPackageUpload
+                Effect: Allow
+                Action:
+                  - "s3:PutObject"
+                  - "s3:PutObjectTagging"
+                Resource: !Sub "${ArtifactBucketArn}/packages/*"
+
+  # ===============================================================================================
+  # 4. AUTOMATION SERVICE ROLE: Trusted role assumed by SSM Automation
+  # ===============================================================================================
+  WuuAutomationServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "wuu-automation-service-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ssm.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: WuuAutomationServicePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowInvokeValidationLambda
+                Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:wuu-validate-plan-${Environment}"
+              - Sid: AllowStartStepFunctions
+                Effect: Allow
+                Action:
+                  - "states:StartExecution"
+                  - "states:DescribeExecution"
+                Resource: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wuu-deployment-${Environment}"
+
+  # ===============================================================================================
+  # 5. COORDINATOR ROLE: Assumed by Step Functions / Dispatch Lambda for fleet orchestration
+  # ===============================================================================================
+  WuuCoordinatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "wuu-coordinator-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: WuuCoordinatorPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowSendCommandToApprovedMemberServers
+                Effect: Allow
+                Action:
+                  - "ssm:SendCommand"
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/Wuu-*"
+                  - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+                Condition:
+                  StringEquals:
+                    "ssm:resourceTag/WuuNodeClass": "memberServer"
+              - Sid: AllowListAndPollCommandStatus
+                Effect: Allow
+                Action:
+                  - "ssm:ListCommands"
+                  - "ssm:ListCommandInvocations"
+                  - "ssm:GetCommandInvocation"
+                Resource: "*"
+              - Sid: AllowDynamoDbStateAndLockManagement
+                Effect: Allow
+                Action:
+                  - "dynamodb:GetItem"
+                  - "dynamodb:PutItem"
+                  - "dynamodb:UpdateItem"
+                  - "dynamodb:DeleteItem"
+                Resource: !Ref StateTableArn
+              - Sid: AllowPlanAndResultStorageAccess
+                Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                Resource: !Sub "${ArtifactBucketArn}/*"
+
+  # ===============================================================================================
+  # 6. MANAGED NODE ROLE: Instance profile for member servers running local workers
+  # ===============================================================================================
+  WuuManagedNodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "wuu-managed-node-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+      Policies:
+        - PolicyName: WuuNodeStorageAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowDownloadWorkerPackages
+                Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                Resource: !Sub "${ArtifactBucketArn}/packages/*"
+              - Sid: AllowUploadResults
+                Effect: Allow
+                Action:
+                  - "s3:PutObject"
+                Resource: !Sub "${ArtifactBucketArn}/results/*"
+              - Sid: AntiTagTamperingAndSecretDeny
+                Effect: Deny
+                Action:
+                  - "ec2:CreateTags"
+                  - "ec2:DeleteTags"
+                  - "ssm:GetParameter"
+                  - "ssm:GetParameters"
+                  - "ssm:GetParametersByPath"
+                  - "kms:Decrypt"
+                Resource: "*"
+
+  WuuManagedNodeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "wuu-managed-node-profile-${Environment}"
+      Roles:
+        - !Ref WuuManagedNodeRole
+
+  # ===============================================================================================
+  # 7. AD PASSWORD WORKER ROLE: Narrow role strictly for Tier 0 credential rotation worker
+  # ===============================================================================================
+  WuuAdPasswordWorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "wuu-ad-password-worker-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+      Policies:
+        - PolicyName: ScopedPasswordSecretAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowReadApprovedPasswordParameterOnly
+                Effect: Allow
+                Action:
+                  - "ssm:GetParameter"
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/wuu/${Environment}/ad/credentials/*"
+              - Sid: AllowDecryptDedicatedKmsKeyOnly
+                Effect: Allow
+                Action:
+                  - "kms:Decrypt"
+                Resource: !Ref KmsKeyArn
+                Condition:
+                  StringEquals:
+                    "kms:ViaService": !Sub "ssm.${AWS::Region}.amazonaws.com"
+              - Sid: DenyArbitraryExecutionAndFleetActions
+                Effect: Deny
+                Action:
+                  - "ssm:SendCommand"
+                  - "states:StartExecution"
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+
+Outputs:
+  OperatorRoleArn:
+    Value: !GetAtt WuuOperatorRole.Arn
+    Export:
+      Name: !Sub "${Environment}-WuuOperatorRoleArn"
+  ApproverRoleArn:
+    Value: !GetAtt WuuApproverRole.Arn
+    Export:
+      Name: !Sub "${Environment}-WuuApproverRoleArn"
+  PublisherRoleArn:
+    Value: !GetAtt WuuPublisherRole.Arn
+    Export:
+      Name: !Sub "${Environment}-WuuPublisherRoleArn"
+  AutomationServiceRoleArn:
+    Value: !GetAtt WuuAutomationServiceRole.Arn
+    Export:
+      Name: !Sub "${Environment}-WuuAutomationServiceRoleArn"
+  CoordinatorRoleArn:
+    Value: !GetAtt WuuCoordinatorRole.Arn
+    Export:
+      Name: !Sub "${Environment}-WuuCoordinatorRoleArn"
+  ManagedNodeInstanceProfileArn:
+    Value: !GetAtt WuuManagedNodeInstanceProfile.Arn
+    Export:
+      Name: !Sub "${Environment}-WuuManagedNodeInstanceProfileArn"
+  AdPasswordWorkerRoleArn:
+    Value: !GetAtt WuuAdPasswordWorkerRole.Arn
+    Export:
+      Name: !Sub "${Environment}-WuuAdPasswordWorkerRoleArn"
+

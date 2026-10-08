@@ -1,0 +1,46 @@
+schemaVersion: '0.3'
+description: Immutable approval wrapper for WUU fleet deployment. Fixed environment approver and automation roles. Binds immutable PlanId, PlanDigest, and ChangeTicket.
+assumeRole: arn:aws:iam::123456789012:role/wuu-automation-service-lab
+parameters:
+  PlanId:
+    type: String
+    description: Unique identifier of the frozen deployment plan.
+    allowedPattern: '^plan-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  PlanDigest:
+    type: String
+    description: Cryptographic SHA256 digest of the frozen deployment plan.
+    allowedPattern: '^[0-9a-fA-F]{64}$'
+  ChangeTicket:
+    type: String
+    description: Approved ITSM change record or ticket identifier.
+    allowedPattern: '^[A-Za-z0-9._/-]{1,100}$'
+  TargetNodes:
+    type: String
+    description: Target EC2 instance ID for deployment coordination.
+    allowedPattern: '^i-([a-f0-9]{8}|[a-f0-9]{17})$'
+mainSteps:
+  - name: Approve
+    action: aws:approve
+    timeoutSeconds: 86400
+    onFailure: Abort
+    inputs:
+      Message: 'Review frozen change plan {{ PlanId }} (SHA256: {{ PlanDigest }}) before approving ticket {{ ChangeTicket }}. Target={{ TargetNodes }}.'
+      MinRequiredApprovals: 1
+      Approvers:
+        - arn:aws:iam::123456789012:role/wuu-approver-lab
+  - name: StartDeployment
+    action: aws:runCommand
+    maxAttempts: 1
+    timeoutSeconds: 14400
+    onFailure: Abort
+    isEnd: true
+    inputs:
+      DocumentName: Wuu-Install
+      DocumentVersion: '1'
+      InstanceIds:
+        - '{{ TargetNodes }}'
+      Parameters:
+        OperationId: '{{ PlanId }}'
+        ChangeTicket: '{{ ChangeTicket }}'
+        Apply: 'true'
+

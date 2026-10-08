@@ -1,0 +1,72 @@
+schemaVersion: '2.2'
+description: Dispatches an approved, controlled reboot on a managed node via SSM exit code 3010. Enforces one-reboot limit.
+parameters:
+  OperationId:
+    type: String
+    default: op-reboot-default
+    allowedPattern: '^[A-Za-z0-9._/-]{1,100}$'
+    interpolationType: ENV_VAR
+  Apply:
+    type: String
+    default: 'false'
+    allowedValues: ['false', 'true']
+    interpolationType: ENV_VAR
+  ChangeTicket:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/-]{0,100}$'
+    interpolationType: ENV_VAR
+  RebootDelaySeconds:
+    type: String
+    default: '5'
+    allowedPattern: '^[0-9]{1,4}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: WuuReboot
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '300'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:SSM_OperationId -or !$env:SSM_Apply) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+
+          if ($env:SSM_Apply -ne 'true') {
+              Write-Output "PREVIEW: Reboot validation for operation $env:SSM_OperationId on $env:COMPUTERNAME. No reboot executed."
+              exit 0
+          }
+
+          if (!$env:SSM_ChangeTicket) { throw 'Apply requires ChangeTicket.' }
+
+          $wuuDir = 'C:\ProgramData\WUU'
+          $rebootModule = Join-Path $wuuDir 'workers\Wuu.Reboot.psm1'
+          $workerScript = Join-Path $wuuDir 'workers\Invoke-WuuWorker.ps1'
+
+          $delay = [int]$env:SSM_RebootDelaySeconds
+          if ($delay -lt 5) { $delay = 5 }
+
+          if (Test-Path $workerScript) {
+              & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $workerScript `
+                  -OperationId $env:SSM_OperationId -Action 'Reboot' -ChangeTicket $env:SSM_ChangeTicket
+              $exit = $LASTEXITCODE
+              if ($exit -ne 0 -and $exit -ne 3010) {
+                  throw "Pre-reboot worker invocation failed with exit code $exit."
+              }
+              & shutdown.exe /r /t $delay /c "WUU2-CLI controlled patch reboot ($env:SSM_OperationId)"
+              if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1190) { throw "Failed to schedule OS reboot: shutdown.exe exited with code $LASTEXITCODE" }
+              exit 3010
+          } elseif (Test-Path $rebootModule) {
+              Import-Module $rebootModule -Force
+              $null = Invoke-WuuReboot -OperationId $env:SSM_OperationId -ChangeTicket $env:SSM_ChangeTicket -DelaySeconds $delay
+              & shutdown.exe /r /t $delay /c "WUU2-CLI controlled patch reboot ($env:SSM_OperationId)"
+              if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1190) { throw "Failed to schedule OS reboot: shutdown.exe exited with code $LASTEXITCODE" }
+              exit 3010
+          } else {
+              & shutdown.exe /r /t $delay /c "WUU2-CLI controlled patch reboot ($env:SSM_OperationId)"
+              if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1190) { throw "Failed to schedule OS reboot: shutdown.exe exited with code $LASTEXITCODE" }
+              Write-Output "REBOOT_INITIATED: Node reboot scheduled in $delay seconds under ticket $env:SSM_ChangeTicket."
+              exit 3010
+          }
+

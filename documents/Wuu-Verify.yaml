@@ -1,0 +1,79 @@
+schemaVersion: '2.2'
+description: Dispatches post-reboot verification and health checks on managed nodes (boot ID, SSM, WSUS scan, core services).
+parameters:
+  OperationId:
+    type: String
+    default: op-verify-default
+    allowedPattern: '^[A-Za-z0-9._/-]{1,100}$'
+    interpolationType: ENV_VAR
+  ChangeTicket:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/-]{0,100}$'
+    interpolationType: ENV_VAR
+  PriorBootId:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9.:_/-]{0,100}$'
+    interpolationType: ENV_VAR
+  NodeClass:
+    type: String
+    default: memberServer
+    allowedValues: [memberServer]
+    interpolationType: ENV_VAR
+  ExpectedWsusUrl:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/:-]{0,255}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: WuuVerify
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '600'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:SSM_OperationId -or !$env:SSM_NodeClass) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+
+          $wuuDir = 'C:\ProgramData\WUU'
+          $postcheckModule = Join-Path $wuuDir 'workers\Wuu.Postcheck.psm1'
+          $workerScript = Join-Path $wuuDir 'workers\Invoke-WuuWorker.ps1'
+
+          if (Test-Path $workerScript) {
+              & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $workerScript `
+                  -OperationId $env:SSM_OperationId -Action 'Verify' -ExpectedWsusUrl $env:SSM_ExpectedWsusUrl `
+                  -ChangeTicket $env:SSM_ChangeTicket -PriorBootId $env:SSM_PriorBootId
+              if ($LASTEXITCODE -ne 0) { throw "Worker verification script failed with exit code $LASTEXITCODE" }
+              exit 0
+          } elseif (Test-Path $postcheckModule) {
+              Import-Module $postcheckModule -Force
+              if ($env:SSM_PriorBootId) {
+                  $bootCheck = Test-WuuBootIdChanged -PriorBootId $env:SSM_PriorBootId
+                  if (!$bootCheck) { throw 'Postcheck failure: Expected system boot ID change was not observed.' }
+              }
+              $servicesOk = Test-WuuNodeClassServices -NodeClass $env:SSM_NodeClass
+              if (!$servicesOk) { throw 'Postcheck failure: One or more essential services are not running.' }
+              Write-Output "VERIFICATION_SUCCESS: ServicesHealthy=$servicesOk"
+              exit 0
+          } else {
+              if ($env:SSM_PriorBootId) {
+                  $lastBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('o')
+                  if ($lastBoot -eq $env:SSM_PriorBootId) {
+                      throw "Verification failure: LastBootUpTime ($lastBoot) has not changed from prior boot ID ($env:SSM_PriorBootId)."
+                  }
+              }
+              $wuauserv = Get-Service -Name 'wuauserv' -ErrorAction SilentlyContinue
+              if ($null -eq $wuauserv -or $wuauserv.Status -ne 'Running') {
+                  throw 'Verification failure: Windows Update service (wuauserv) is not running.'
+              }
+              $lanman = Get-Service -Name 'LanmanWorkstation' -ErrorAction SilentlyContinue
+              if ($null -eq $lanman -or $lanman.Status -ne 'Running') {
+                  throw 'Verification failure: LanmanWorkstation service is not running.'
+              }
+              Write-Output "VERIFICATION_PASSED: Core services verified on $env:COMPUTERNAME for operation $env:SSM_OperationId."
+              exit 0
+          }
+

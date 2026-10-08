@@ -1,0 +1,137 @@
+schemaVersion: '2.2'
+description: AD CS health and certificate request/issue/retrieve/revoke/CRL administration. CSR artifacts stay under ProgramData/WinDomain/Requests; private keys are never exported.
+parameters:
+  Action:
+    type: String
+    default: Inspect
+    allowedValues: [Inspect, Submit, InspectRequest, Issue, Retrieve, Revoke, PublishCRL]
+    interpolationType: ENV_VAR
+  CAConfig:
+    type: String
+    description: Explicit host\CA-name configuration. CA ACLs must enforce permitted issuers/templates.
+    allowedPattern: '^[A-Za-z0-9.-]+\\[A-Za-z0-9 ._-]{1,128}$'
+    interpolationType: ENV_VAR
+  Template:
+    type: String
+    default: ''
+    description: Template short name for Submit; never use a display name or arbitrary request attributes.
+    allowedPattern: '^[A-Za-z0-9_-]{0,64}$'
+    interpolationType: ENV_VAR
+  RequestFile:
+    type: String
+    default: ''
+    description: Basename of a reviewed PEM PKCS10 CSR already staged in the protected Requests directory.
+    allowedPattern: '^([A-Za-z0-9][A-Za-z0-9_-]{0,80}\.req)?$'
+    interpolationType: ENV_VAR
+  RequestSha256:
+    type: String
+    default: ''
+    allowedPattern: '^([A-Fa-f0-9]{64})?$'
+    interpolationType: ENV_VAR
+  RequestId:
+    type: String
+    default: '0'
+    allowedPattern: '^[0-9]{1,10}$'
+    interpolationType: ENV_VAR
+  SerialNumber:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Fa-f0-9]{0,128}$'
+    interpolationType: ENV_VAR
+  RevocationReason:
+    type: String
+    default: '1'
+    allowedValues: ['0', '1', '2', '3', '4', '5', '6', '9', '10']
+    interpolationType: ENV_VAR
+  Apply:
+    type: String
+    default: 'false'
+    allowedValues: ['false', 'true']
+    interpolationType: ENV_VAR
+  ChangeTicket:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/-]{0,100}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: ADCS
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '600'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:SSM_Action -or !$env:SSM_CAConfig -or !$env:SSM_Apply) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+          function Invoke-CertUtil {
+              param([string[]]$Arguments)
+              & certutil.exe @Arguments
+              if ($LASTEXITCODE -ne 0) { throw "certutil failed with code $LASTEXITCODE. Review command output." }
+          }
+          $config = $env:SSM_CAConfig
+          Invoke-CertUtil -Arguments @('-config', $config, '-ping')
+          if ($env:SSM_Action -eq 'Inspect') {
+              Invoke-CertUtil -Arguments @('-config', $config, '-CAInfo')
+              Invoke-CertUtil -Arguments @('-config', $config, '-CATemplates')
+              exit 0
+          }
+          $requestId = [int]$env:SSM_RequestId
+          if ($env:SSM_Action -in @('InspectRequest','Issue','Retrieve') -and $requestId -lt 1) { throw 'A positive RequestId is required.' }
+          $request = New-Object -ComObject CertificateAuthority.Request
+          $disposition = $null
+          if ($env:SSM_Action -in @('InspectRequest','Issue','Retrieve')) {
+              $disposition = $request.RetrievePending($requestId, $config)
+              Write-Output "RequestId=$requestId; disposition=$disposition; 3=issued, 5=pending, 2=denied."
+              if ($env:SSM_Action -eq 'InspectRequest') { exit 0 }
+              if ($env:SSM_Action -eq 'Issue' -and $disposition -ne 5) { throw 'Only a pending request may be issued.' }
+              if ($env:SSM_Action -eq 'Retrieve' -and $disposition -ne 3) { throw 'Certificate is not issued.' }
+          }
+          $root = Join-Path $env:ProgramData 'WinDomain\Requests'
+          $csr = $null
+          if ($env:SSM_Action -eq 'Submit') {
+              if (!$env:SSM_Template -or !$env:SSM_RequestFile -or !$env:SSM_RequestSha256) { throw 'Submit requires Template, RequestFile and reviewed RequestSha256.' }
+              $path = Join-Path $root $env:SSM_RequestFile
+              $file = Get-Item -LiteralPath $path
+              if ($file.Length -gt 65536 -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'CSR is too large or a reparse point.' }
+                $bytes = [IO.File]::ReadAllBytes($path)
+                if ($bytes.Length -gt 65536) { throw 'CSR is too large.' }
+                $sha = [Security.Cryptography.SHA256]::Create()
+                try { $hash = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '') }
+                finally { $sha.Dispose() }
+                if ($hash -ne $env:SSM_RequestSha256) { throw 'CSR hash differs from reviewed content.' }
+                $csr = [Text.Encoding]::ASCII.GetString($bytes)
+              if ($csr -notmatch '^-----BEGIN (NEW )?CERTIFICATE REQUEST-----') { throw 'CSR must be PEM PKCS10.' }
+          }
+          if ($env:SSM_Action -eq 'Revoke' -and !$env:SSM_SerialNumber) { throw 'Revoke requires SerialNumber.' }
+          if ($env:SSM_Apply -ne 'true') { Write-Output "PREVIEW: $env:SSM_Action at $config; request=$requestId; serial=$env:SSM_SerialNumber. No changes made."; exit 0 }
+          if (!$env:SSM_ChangeTicket) { throw 'Apply requires ChangeTicket.' }
+          switch ($env:SSM_Action) {
+              'Submit' {
+                  $disposition = $request.Submit(256, $csr, ('CertificateTemplate:' + $env:SSM_Template), $config)
+                  $submittedId = $request.GetRequestId()
+                  Write-Output "RequestId=$submittedId; disposition=$disposition"
+                  if ($disposition -notin @(3,5)) { throw 'CA did not issue or pend the request. Inspect CA request disposition before retrying.' }
+              }
+              'Issue' {
+                  $admin = New-Object -ComObject CertificateAuthority.Admin
+                  $disposition = $admin.ResubmitRequest($config, $requestId)
+                  if ($disposition -ne 3) { throw "Request was not issued; disposition=$disposition. Review CA policy and audit trail." }
+              }
+              'Retrieve' {
+                  $null = New-Item -Path $root -ItemType Directory -Force
+                  $output = Join-Path $root ("issued-$requestId-" + [guid]::NewGuid().ToString() + '.cer')
+                  [IO.File]::WriteAllText($output, $request.GetCertificate(0), [Text.Encoding]::ASCII)
+                  Write-Output "Issued public certificate saved to $output. Accept it only on the original key-owning host."
+              }
+              'Revoke' {
+                  $admin = New-Object -ComObject CertificateAuthority.Admin
+                  $admin.RevokeCertificate($config, $env:SSM_SerialNumber, [int]$env:SSM_RevocationReason, (Get-Date))
+                  Write-Output 'Revocation recorded. PublishCRL and external CDP/OCSP verification are required before considering remediation complete.'
+              }
+              'PublishCRL' {
+                  Invoke-CertUtil -Arguments @('-config', $config, '-CRL')
+                  Write-Output 'CRL publication requested. Validate every configured CDP/OCSP endpoint from a relying-party network.'
+              }
+          }
+          Write-Output "APPLIED/REQUESTED: $env:SSM_Action; ticket=$env:SSM_ChangeTicket"

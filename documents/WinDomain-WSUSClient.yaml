@@ -1,0 +1,79 @@
+schemaVersion: '2.2'
+description: Local Windows Update policy/service diagnostics, computer policy refresh, detection and reversible SoftwareDistribution rename. Does not delete client IDs or install updates.
+parameters:
+  Action:
+    type: String
+    default: Diagnose
+    allowedValues: [Diagnose, RefreshPolicy, Detect, ResetCache]
+    interpolationType: ENV_VAR
+  Apply:
+    type: String
+    default: 'false'
+    allowedValues: ['false', 'true']
+    interpolationType: ENV_VAR
+  ChangeTicket:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/-]{0,100}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: WSUSClient
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '600'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:SSM_Action -or !$env:SSM_Apply) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+          $policyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
+          if (Test-Path $policyPath) {
+              $policy = Get-ItemProperty $policyPath
+              $policy | Select-Object WUServer,WUStatusServer,TargetGroup,TargetGroupEnabled | ConvertTo-Json
+              if (Test-Path ($policyPath + '\AU')) { Get-ItemProperty ($policyPath + '\AU') | Select-Object UseWUServer,NoAutoUpdate,AUOptions | ConvertTo-Json }
+              if ($policy.WUServer) {
+                  $uri = [uri]$policy.WUServer
+                  if ($uri.Scheme -notin @('http','https')) { throw 'WSUS endpoint has an unsupported scheme.' }
+                  $connection = Test-NetConnection -ComputerName $uri.DnsSafeHost -Port $uri.Port -WarningAction SilentlyContinue
+                  $connection | Select-Object ComputerName,RemotePort,TcpTestSucceeded | ConvertTo-Json
+                  if (!$connection.TcpTestSucceeded) { Write-Output 'WSUS endpoint is unreachable. Cache reset does not fix networking or TLS.' }
+              }
+          } else { Write-Output 'No Windows Update GPO policy is present on this node.' }
+          Get-Service wuauserv,BITS,cryptsvc | Select-Object Name,Status,StartType | ConvertTo-Json
+          & gpresult.exe /scope computer /r
+          if ($LASTEXITCODE -ne 0) { throw 'gpresult failed.' }
+          if ($env:SSM_Action -eq 'Diagnose') { exit 0 }
+          if ($env:SSM_Apply -ne 'true') { Write-Output "PREVIEW: $env:SSM_Action on $env:COMPUTERNAME. No changes made."; exit 0 }
+          if (!$env:SSM_ChangeTicket) { throw 'Apply requires ChangeTicket.' }
+          switch ($env:SSM_Action) {
+              'RefreshPolicy' {
+                  & gpupdate.exe /target:computer /force /wait:120
+                  if ($LASTEXITCODE -ne 0) { throw 'Computer policy refresh failed or requires further action; review output.' }
+              }
+              'Detect' {
+                  $autoUpdate = New-Object -ComObject Microsoft.Update.AutoUpdate
+                  $autoUpdate.DetectNow()
+                  Write-Output 'Detection requested. Check WindowsUpdateClient/Operational and WSUS LastReportedStatusTime separately.'
+              }
+              'ResetCache' {
+                  if ((Get-CimInstance Win32_ComputerSystem).DomainRole -ge 4) { throw 'Cache reset on domain controllers is excluded.' }
+                  $rebootKeys = @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending','HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
+                  foreach ($key in $rebootKeys) { if (Test-Path $key) { throw 'A reboot is pending; resolve it before resetting update cache.' } }
+                  if (Get-Process -Name TiWorker,TrustedInstaller -ErrorAction SilentlyContinue) { throw 'Windows servicing is active; do not reset cache.' }
+                  $services = @(Get-Service wuauserv,BITS)
+                  $source = Join-Path $env:windir 'SoftwareDistribution'
+                  $backup = Join-Path $env:windir ('SoftwareDistribution.ssm-' + [guid]::NewGuid().ToString())
+                  try {
+                      foreach ($service in $services) {
+                          if ($service.Status -eq 'Running') { Stop-Service -Name $service.Name }
+                          (Get-Service $service.Name).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
+                      }
+                      if (Test-Path -LiteralPath $source) { Move-Item -LiteralPath $source -Destination $backup }
+                  } finally {
+                      foreach ($service in $services) { if ($service.Status -eq 'Running') { Start-Service -Name $service.Name } }
+                  }
+                  Write-Output "Previous cache preserved at $backup if it existed. No automatic deletion or update installation performed."
+              }
+          }
+          Write-Output "APPLIED/REQUESTED: $env:SSM_Action; ticket=$env:SSM_ChangeTicket"

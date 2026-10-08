@@ -1,0 +1,74 @@
+name: Environment Deployment & Artifact Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target deployment environment"
+        required: true
+        default: "lab"
+        type: choice
+        options:
+          - lab
+          - staging
+          - prod
+      changeTicket:
+        description: "Approved Change Ticket reference (e.g. CHG-10023)"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Pre-deployment Offline Validation Gate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install NPM Dependencies
+        run: npm ci
+
+      - name: Run Complete Pack Verification Gate
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1
+
+  publish-and-deploy:
+    name: Deploy to ${{ inputs.environment }}
+    needs: validate
+    runs-on: windows-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/wuu-publisher-${{ inputs.environment }}
+          aws-region: us-east-1
+
+      - name: Build Immutable Worker Package
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Build-WorkerPackage.ps1 -Version "1.0.0"
+
+      - name: Publish Documents and Package
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Deploy-Environment.ps1 `
+            -Environment ${{ inputs.environment }} `
+            -ChangeTicket "${{ inputs.changeTicket }}"
+

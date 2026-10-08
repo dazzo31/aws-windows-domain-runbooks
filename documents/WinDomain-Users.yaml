@@ -1,0 +1,112 @@
+schemaVersion: '2.2'
+description: Scoped AD user lifecycle. LocalSystem needs delegated AD rights; passwords are fetched from SecureString Parameter Store on the node.
+parameters:
+  Action:
+    type: String
+    default: Inspect
+    allowedValues: [Inspect, Create, Disable, Unlock, ResetPassword]
+    interpolationType: ENV_VAR
+  Server:
+    type: String
+    allowedPattern: '^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$'
+    interpolationType: ENV_VAR
+  ManagedOU:
+    type: String
+    description: Exact permitted OU DN. Enforce a fixed scope through AD ACLs, not this caller-supplied value alone.
+    allowedPattern: '^OU=[^\r\n]{1,1000}$'
+    interpolationType: ENV_VAR
+  Identity:
+    type: String
+    description: Exact sAMAccountName; no wildcard or bulk operations.
+    allowedPattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$'
+    interpolationType: ENV_VAR
+  DisplayName:
+    type: String
+    default: ''
+    allowedPattern: '^[^\r\n]{0,128}$'
+    interpolationType: ENV_VAR
+  UserPrincipalName:
+    type: String
+    default: ''
+    allowedPattern: '^([A-Za-z0-9._-]+@[A-Za-z0-9.-]+)?$'
+    interpolationType: ENV_VAR
+  PasswordParameter:
+    type: String
+    default: ''
+    description: Name of an existing SecureString, never the password itself. Node IAM/KMS permissions must restrict its path.
+    allowedPattern: '^(/[A-Za-z0-9_./-]{1,500})?$'
+    interpolationType: ENV_VAR
+  Apply:
+    type: String
+    default: 'false'
+    allowedValues: ['false', 'true']
+    interpolationType: ENV_VAR
+  ChangeTicket:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/-]{0,100}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: Users
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '300'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          if (!$env:SSM_Action -or !$env:SSM_Server -or !$env:SSM_ManagedOU -or !$env:SSM_Identity -or !$env:SSM_Apply) { throw 'Missing ENV_VAR input. Require SSM Agent 3.3.2746.0 or newer.' }
+          Import-Module ActiveDirectory
+          $server = $env:SSM_Server
+          $scope = Get-ADOrganizationalUnit -Identity $env:SSM_ManagedOU -Server $server
+          $identity = $env:SSM_Identity
+          $user = @(Get-ADUser -Filter { SamAccountName -eq $identity } -Server $server -Properties adminCount,LockedOut,PasswordLastSet)
+          if ($user.Count -gt 1) { throw 'Identity is ambiguous.' }
+          if ($user.Count -eq 1) {
+              $user = $user[0]
+              if (!$user.DistinguishedName.EndsWith(',' + $scope.DistinguishedName, [StringComparison]::OrdinalIgnoreCase)) { throw 'User is outside the managed OU.' }
+              $user | Select-Object SamAccountName,DistinguishedName,Enabled,LockedOut,PasswordLastSet | ConvertTo-Json
+          } else { $user = $null }
+          if ($env:SSM_Action -eq 'Inspect') {
+              if (!$user) { throw 'User does not exist.' }
+              exit 0
+          }
+          if ($user -and $user.adminCount -eq 1) { throw 'Protected accounts are excluded from this pack.' }
+          if ($env:SSM_Action -eq 'Create') {
+              if ($user) { throw 'User already exists; refusing to alter it.' }
+              if (!$env:SSM_DisplayName -or !$env:SSM_UserPrincipalName -or !$env:SSM_PasswordParameter) { throw 'Create requires DisplayName, UserPrincipalName and PasswordParameter.' }
+          } elseif (!$user) { throw 'User does not exist.' }
+          if ($env:SSM_Action -eq 'ResetPassword' -and !$env:SSM_PasswordParameter) { throw 'ResetPassword requires PasswordParameter.' }
+          if ($env:SSM_Apply -ne 'true') { Write-Output "PREVIEW: $env:SSM_Action user $env:SSM_Identity on $server. No changes made."; exit 0 }
+          if (!$env:SSM_ChangeTicket) { throw 'Apply requires ChangeTicket.' }
+          $password = $null
+          if ($env:SSM_Action -in @('Create','ResetPassword')) {
+              Import-Module AWS.Tools.SimpleSystemsManagement
+              $parameter = Get-SSMParameter -Name $env:SSM_PasswordParameter -WithDecryption $true -Select 'Parameter'
+              if ([string]$parameter.Type -ne 'SecureString') { throw 'PasswordParameter must be SecureString.' }
+              $password = ConvertTo-SecureString -String $parameter.Value -AsPlainText -Force
+              $parameter = $null
+          }
+          try {
+              switch ($env:SSM_Action) {
+                  'Create' {
+                      New-ADUser -Name $env:SSM_Identity -DisplayName $env:SSM_DisplayName -SamAccountName $env:SSM_Identity -UserPrincipalName $env:SSM_UserPrincipalName -Path $scope.DistinguishedName -AccountPassword $password -Enabled $true -ChangePasswordAtLogon $true -Server $server
+                  }
+                  'Disable' { Disable-ADAccount -Identity $user.ObjectGUID -Server $server }
+                  'Unlock' { Unlock-ADAccount -Identity $user.ObjectGUID -Server $server }
+                  'ResetPassword' {
+                      Set-ADAccountPassword -Identity $user.ObjectGUID -Reset -NewPassword $password -Server $server
+                      Set-ADUser -Identity $user.ObjectGUID -ChangePasswordAtLogon $true -Server $server
+                  }
+              }
+          } catch { throw 'User operation failed or partially completed. Inspect the account and AD audit events before retry; secret values are deliberately omitted.' }
+          finally { if ($password) { $password.Dispose() }; $password = $null }
+          $result = Get-ADUser -Identity $env:SSM_Identity -Server $server -Properties LockedOut,PasswordLastSet,pwdLastSet
+          if ($env:SSM_Action -eq 'Disable' -and $result.Enabled) { throw 'Disable verification failed.' }
+          if ($env:SSM_Action -eq 'Unlock' -and $result.LockedOut) { throw 'Unlock verification failed.' }
+          if ($env:SSM_Action -eq 'Create' -and !$result.Enabled) { throw 'New user enablement verification failed.' }
+          if ($env:SSM_Action -in @('Create','ResetPassword') -and $result.pwdLastSet -ne 0) { throw 'Password-change-at-logon verification failed.' }
+          Write-Output "APPLIED: $env:SSM_Action; ticket=$env:SSM_ChangeTicket"
+          $result | Select-Object SamAccountName,DistinguishedName,Enabled,LockedOut | ConvertTo-Json

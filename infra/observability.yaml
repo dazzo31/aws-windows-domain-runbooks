@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  WUU2-CLI Observability, Alerting, and Audit Notification Infrastructure.
+  Defines encrypted SNS topics, EventBridge failure rules, and CloudWatch alarms
+  for fleet execution failures, unknown-outcome quarantines, and audit delivery faults.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: lab
+    AllowedValues: [lab, staging, prod]
+    Description: Target deployment environment name.
+
+  KmsKeyArn:
+    Type: String
+    Default: "arn:aws:kms:us-east-1:123456789012:key/wuu-kms-key"
+    Description: KMS key ARN for topic encryption and metric security.
+
+  NotificationEmail:
+    Type: String
+    Default: "wuu-alerts@example.com"
+    Description: Operator email address for critical fleet failure alerts.
+
+Resources:
+  # ===============================================================================================
+  # SNS Topic for Fleet Alerts and Delivery Notifications
+  # ===============================================================================================
+  WuuAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "wuu-alerts-${Environment}"
+      KmsMasterKeyId: !Ref KmsKeyArn
+      Subscription:
+        - Endpoint: !Ref NotificationEmail
+          Protocol: email
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: WuuObservability
+
+  WuuAlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref WuuAlertTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowEventBridgePublish
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: "sns:Publish"
+            Resource: !Ref WuuAlertTopic
+          - Sid: AllowCloudWatchAlarmsPublish
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action: "sns:Publish"
+            Resource: !Ref WuuAlertTopic
+
+  # ===============================================================================================
+  # EventBridge Rule: State Machine Execution Failures & Timeouts
+  # ===============================================================================================
+  WuuStateMachineFailureRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "wuu-state-machine-failures-${Environment}"
+      Description: Alerts on WUU Step Functions execution failures, timeouts, or cancellations.
+      EventPattern:
+        source:
+          - "aws.states"
+        detail-type:
+          - "Step Functions Execution Status Change"
+        detail:
+          status:
+            - "FAILED"
+            - "TIMED_OUT"
+            - "ABORTED"
+          stateMachineArn:
+            - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:wuu-deployment-${Environment}"
+      Targets:
+        - Id: NotifySnsOnFailure
+          Arn: !Ref WuuAlertTopic
+
+  # ===============================================================================================
+  # EventBridge Rule: Automation Execution Failures
+  # ===============================================================================================
+  WuuAutomationFailureRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "wuu-automation-failures-${Environment}"
+      Description: Alerts on SSM Automation approval or dispatch failures.
+      EventPattern:
+        source:
+          - "aws.ssm"
+        detail-type:
+          - "EC2 Automation Execution Status Change"
+        detail:
+          Definition:
+            - "Wuu-ApprovedDeployment"
+            - "WinDomain-ApprovedChange"
+          Status:
+            - "Failed"
+            - "TimedOut"
+            - "Cancelled"
+      Targets:
+        - Id: NotifySnsOnAutomationFailure
+          Arn: !Ref WuuAlertTopic
+
+  # ===============================================================================================
+  # CloudWatch Metric Filter and Alarm: Postcheck Failures
+  # ===============================================================================================
+  WuuPostcheckFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "wuu-postcheck-failures-${Environment}"
+      AlarmDescription: Triggers when postcheck verification fails or unknown-outcome quarantine occurs.
+      Namespace: "WUU/Fleet"
+      MetricName: "PostcheckFailures"
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref WuuAlertTopic
+      TreatMissingData: notBreaching
+
+Outputs:
+  AlertTopicArn:
+    Description: ARN of the SNS alert topic for WUU notifications.
+    Value: !Ref WuuAlertTopic
+    Export:
+      Name: !Sub "${AWS::StackName}-AlertTopicArn"
+
+  StateMachineFailureRuleArn:
+    Description: ARN of the EventBridge failure detection rule.
+    Value: !GetAtt WuuStateMachineFailureRule.Arn
+

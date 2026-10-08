@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WuuUpdateSelection",
+  "description": "Schema for approved update selection manifests with GUID and revision binding.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "planId",
+    "approvedUpdates"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "planId": {
+      "type": "string"
+    },
+    "approvedUpdates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "updateId",
+          "revisionNumber",
+          "title",
+          "eulaApproved"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "updateId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "revisionNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "kbArticleId": {
+            "type": "string"
+          },
+          "eulaApproved": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,285 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dazzo31/aws-windows-domain-runbooks/schemas/environment.schema.json",
+  "title": "WuuEnvironmentConfiguration",
+  "description": "Schema for validating environment adoption configurations for AWS-integrated Windows domain operations.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "environment",
+    "status",
+    "aws",
+    "ownership",
+    "upstream",
+    "supportMatrix",
+    "wsus",
+    "nodeClasses",
+    "deployment",
+    "iam",
+    "observability"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["lab", "staging", "prod"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["template", "active", "deprecated"]
+    },
+    "aws": {
+      "type": "object",
+      "required": ["accountId", "region", "partition", "vpcId", "privateSubnetIds", "endpoints"],
+      "properties": {
+        "accountId": {
+          "type": "string",
+          "pattern": "^\\d{12}$"
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^[a-z]{2}-[a-z]+-\\d+$"
+        },
+        "partition": {
+          "type": "string",
+          "enum": ["aws", "aws-us-gov", "aws-cn"]
+        },
+        "vpcId": {
+          "type": "string",
+          "pattern": "^vpc-[0-9a-f]{8,17}$"
+        },
+        "privateSubnetIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^subnet-[0-9a-f]{8,17}$"
+          }
+        },
+        "endpoints": {
+          "type": "object",
+          "required": ["ssm", "ssmmessages", "logs", "s3Gateway"],
+          "properties": {
+            "ssm": { "type": "string", "pattern": "^vpce-[0-9a-f]{8,17}$" },
+            "ssmmessages": { "type": "string", "pattern": "^vpce-[0-9a-f]{8,17}$" },
+            "logs": { "type": "string", "pattern": "^vpce-[0-9a-f]{8,17}$" },
+            "s3Gateway": { "type": "string", "pattern": "^vpce-[0-9a-f]{8,17}$" }
+          }
+        }
+      }
+    },
+    "ownership": {
+      "type": "object",
+      "required": ["technicalContact", "operationsOwner", "securityApprover", "costCenter"],
+      "properties": {
+        "technicalContact": { "type": "string" },
+        "operationsOwner": { "type": "string" },
+        "securityApprover": { "type": "string" },
+        "costCenter": { "type": "string" }
+      }
+    },
+    "upstream": {
+      "type": "object",
+      "required": ["project", "repository", "pinnedCommit", "pinnedTag", "license", "decoupledModel"],
+      "properties": {
+        "project": { "type": "string", "const": "WUU2-CLI" },
+        "repository": { "type": "string" },
+        "pinnedCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "pinnedTag": { "type": "string" },
+        "license": { "type": "string", "const": "MIT" },
+        "decoupledModel": { "type": "boolean", "const": true }
+      }
+    },
+    "supportMatrix": {
+      "type": "object",
+      "required": ["windowsOperatingSystems", "powershell", "ssmAgent", "cloudHandlers"],
+      "properties": {
+        "windowsOperatingSystems": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "supported"],
+            "properties": {
+              "name": { "type": "string" },
+              "supported": { "type": "boolean" },
+              "build": { "type": "integer" }
+            }
+          }
+        },
+        "powershell": {
+          "type": "object",
+          "required": ["engine", "requiredApartmentState", "executionPolicy", "nonInteractiveOnly"],
+          "properties": {
+            "engine": { "type": "string", "const": "Windows PowerShell 5.1" },
+            "requiredApartmentState": { "type": "string", "const": "STA" },
+            "executionPolicy": { "type": "string", "const": "Bypass" },
+            "nonInteractiveOnly": { "type": "boolean", "const": true }
+          }
+        },
+        "ssmAgent": {
+          "type": "object",
+          "required": ["minimumVersion"],
+          "properties": {
+            "minimumVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+\\.\\d+$" }
+          }
+        },
+        "cloudHandlers": {
+          "type": "object",
+          "required": ["lambdaRuntime", "awsSdkVersion"],
+          "properties": {
+            "lambdaRuntime": { "type": "string" },
+            "awsSdkVersion": { "type": "string" }
+          }
+        }
+      }
+    },
+    "wsus": {
+      "type": "object",
+      "required": [
+        "authorityOnly",
+        "serverSelection",
+        "allowMicrosoftUpdateFallback",
+        "allowPatchManager",
+        "serverUrl",
+        "targetGroup",
+        "contentHosting",
+        "tls"
+      ],
+      "properties": {
+        "authorityOnly": { "type": "boolean", "const": true },
+        "serverSelection": { "type": "string", "const": "ssManagedServer" },
+        "allowMicrosoftUpdateFallback": { "type": "boolean", "const": false },
+        "allowPatchManager": { "type": "boolean", "const": false },
+        "serverUrl": { "type": "string", "pattern": "^https://[a-zA-Z0-9.-]+:8531$" },
+        "targetGroup": { "type": "string" },
+        "contentHosting": { "type": "string", "enum": ["locally_stored", "externally_hosted"] },
+        "tls": {
+          "type": "object",
+          "required": ["enforceHttps", "validateCertificateChain", "expectedPort", "trustedRootThumbprint"],
+          "properties": {
+            "enforceHttps": { "type": "boolean", "const": true },
+            "validateCertificateChain": { "type": "boolean", "const": true },
+            "expectedPort": { "type": "integer", "const": 8531 },
+            "trustedRootThumbprint": { "type": "string", "pattern": "^[0-9A-Fa-f]{40}$" }
+          }
+        }
+      }
+    },
+    "nodeClasses": {
+      "type": "object",
+      "required": ["memberServer", "domainController", "certificateAuthority", "clusterNode"],
+      "properties": {
+        "memberServer": {
+          "type": "object",
+          "required": ["description", "eligibleForFleetPatching", "eligibleForDirectReboot", "maxRebootsPerDeployment"],
+          "properties": {
+            "description": { "type": "string" },
+            "eligibleForFleetPatching": { "type": "boolean", "const": true },
+            "eligibleForDirectReboot": { "type": "boolean", "const": true },
+            "maxRebootsPerDeployment": { "type": "integer", "const": 1 },
+            "requiredTags": { "type": "object" }
+          }
+        },
+        "domainController": {
+          "type": "object",
+          "required": ["description", "eligibleForFleetPatching", "eligibleForDirectReboot"],
+          "properties": {
+            "description": { "type": "string" },
+            "eligibleForFleetPatching": { "type": "boolean", "const": false },
+            "eligibleForDirectReboot": { "type": "boolean", "const": false },
+            "requiredTags": { "type": "object" }
+          }
+        },
+        "certificateAuthority": {
+          "type": "object",
+          "required": ["description", "eligibleForFleetPatching", "eligibleForDirectReboot"],
+          "properties": {
+            "description": { "type": "string" },
+            "eligibleForFleetPatching": { "type": "boolean", "const": false },
+            "eligibleForDirectReboot": { "type": "boolean", "const": false },
+            "requiredTags": { "type": "object" }
+          }
+        },
+        "clusterNode": {
+          "type": "object",
+          "required": ["description", "eligibleForFleetPatching", "eligibleForDirectReboot"],
+          "properties": {
+            "description": { "type": "string" },
+            "eligibleForFleetPatching": { "type": "boolean", "const": false },
+            "eligibleForDirectReboot": { "type": "boolean", "const": false }
+          }
+        }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "required": ["phases", "servicingLock", "executionTimeouts", "rebootPolicy"],
+      "properties": {
+        "phases": {
+          "type": "object",
+          "required": ["totalPhases", "concurrencyPerPhase", "blockOnPhaseFailure", "canaryPhase"],
+          "properties": {
+            "totalPhases": { "type": "integer", "const": 5 },
+            "concurrencyPerPhase": { "type": "integer", "minimum": 1, "maximum": 50 },
+            "blockOnPhaseFailure": { "type": "boolean", "const": true },
+            "canaryPhase": { "type": "integer", "const": 1 }
+          }
+        },
+        "servicingLock": {
+          "type": "object",
+          "required": ["namedMutex", "journalPath", "detectNativeLocks", "serviceStopBackoffSeconds"],
+          "properties": {
+            "namedMutex": { "type": "string" },
+            "journalPath": { "type": "string" },
+            "detectNativeLocks": { "type": "boolean", "const": true },
+            "serviceStopBackoffSeconds": { "type": "integer", "minimum": 5 }
+          }
+        },
+        "executionTimeouts": {
+          "type": "object",
+          "required": ["installTimeoutSeconds", "rebootTimeoutSeconds", "minDiskFreeSpaceGB"],
+          "properties": {
+            "installTimeoutSeconds": { "type": "integer", "minimum": 1800 },
+            "rebootTimeoutSeconds": { "type": "integer", "minimum": 600 },
+            "minDiskFreeSpaceGB": { "type": "integer", "minimum": 10 }
+          }
+        },
+        "rebootPolicy": {
+          "type": "object",
+          "required": ["mode", "rebootCommandCode", "maxRebootsPerNode", "captureConsoleOnTimeout"],
+          "properties": {
+            "mode": { "type": "string", "const": "separate_approval_required" },
+            "rebootCommandCode": { "type": "integer", "const": 3010 },
+            "maxRebootsPerNode": { "type": "integer", "const": 1 },
+            "captureConsoleOnTimeout": { "type": "boolean", "const": true }
+          }
+        }
+      }
+    },
+    "iam": {
+      "type": "object",
+      "required": ["approverRoleArn", "operatorRoleArn", "executionRoleArn", "nodeInstanceProfileArn"],
+      "properties": {
+        "approverRoleArn": { "type": "string", "pattern": "^arn:aws(-[a-z]+)?:iam::\\d{12}:role/.+$" },
+        "operatorRoleArn": { "type": "string", "pattern": "^arn:aws(-[a-z]+)?:iam::\\d{12}:role/.+$" },
+        "executionRoleArn": { "type": "string", "pattern": "^arn:aws(-[a-z]+)?:iam::\\d{12}:role/.+$" },
+        "nodeInstanceProfileArn": { "type": "string", "pattern": "^arn:aws(-[a-z]+)?:iam::\\d{12}:instance-profile/.+$" }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "required": ["evidenceBucket", "cloudWatchLogGroup", "retentionDays", "kmsKeyArn"],
+      "properties": {
+        "evidenceBucket": { "type": "string" },
+        "cloudWatchLogGroup": { "type": "string" },
+        "retentionDays": { "type": "integer", "minimum": 30 },
+        "kmsKeyArn": { "type": "string", "pattern": "^arn:aws(-[a-z]+)?:kms:[a-z0-9-]+:\\d{12}:key/.+$" }
+      }
+    }
+  }
+}
+

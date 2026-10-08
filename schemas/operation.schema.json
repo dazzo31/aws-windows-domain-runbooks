@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WuuOperationRecord",
+  "description": "Schema for durable DynamoDB operation execution and node lock records.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "operationId",
+    "planId",
+    "status",
+    "owner",
+    "fencingToken",
+    "targetNodes",
+    "createdAt",
+    "updatedAt",
+    "changeTicket",
+    "environment"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "operationId": {
+      "type": "string",
+      "pattern": "^op-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "ACQUIRED",
+        "IN_PROGRESS",
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNCERTAIN"
+      ]
+    },
+    "owner": {
+      "type": "string"
+    },
+    "fencingToken": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "targetNodes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^i-[0-9a-f]{8,17}$"
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "changeTicket": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["lab", "staging", "prod"]
+    }
+  }
+}
+

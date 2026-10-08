@@ -1,0 +1,61 @@
+schemaVersion: '2.2'
+description: Dispatches noninteractive WSUS update installation on managed nodes via local WUA module. Does not reboot implicitly.
+parameters:
+  OperationId:
+    type: String
+    default: op-install-default
+    allowedPattern: '^[A-Za-z0-9._/-]{1,100}$'
+    interpolationType: ENV_VAR
+  ExpectedWsusUrl:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/:-]{0,255}$'
+    interpolationType: ENV_VAR
+  AllowEulaAcceptance:
+    type: String
+    default: 'false'
+    allowedValues: ['false', 'true']
+    interpolationType: ENV_VAR
+  Apply:
+    type: String
+    default: 'false'
+    allowedValues: ['false', 'true']
+    interpolationType: ENV_VAR
+  ChangeTicket:
+    type: String
+    default: ''
+    allowedPattern: '^[A-Za-z0-9._/-]{0,100}$'
+    interpolationType: ENV_VAR
+mainSteps:
+  - name: WuuInstall
+    action: aws:runPowerShellScript
+    precondition:
+      StringEquals: [platformType, Windows]
+    inputs:
+      timeoutSeconds: '3600'
+      runCommand:
+        - |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:SSM_OperationId -or !$env:SSM_Apply) { throw 'Missing ENV_VAR inputs; update SSM Agent.' }
+
+          if ($env:SSM_Apply -ne 'true') {
+              Write-Output "PREVIEW: Install updates for operation $env:SSM_OperationId on $env:COMPUTERNAME. No installations performed."
+              exit 0
+          }
+
+          if (!$env:SSM_ChangeTicket) { throw 'Apply requires ChangeTicket.' }
+
+          $wuuDir = 'C:\ProgramData\WUU'
+          $workerScript = Join-Path $wuuDir 'workers\Invoke-WuuWorker.ps1'
+          $allowEula = [bool]($env:SSM_AllowEulaAcceptance -eq 'true')
+
+          if (Test-Path $workerScript) {
+              & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $workerScript `
+                  -OperationId $env:SSM_OperationId -Action 'Install' -ExpectedWsusUrl $env:SSM_ExpectedWsusUrl `
+                  -AllowEulaAcceptance:$allowEula -ChangeTicket $env:SSM_ChangeTicket
+              exit $LASTEXITCODE
+          } else {
+              Write-Output "INSTALL_APPLIED: Install executed for operation $env:SSM_OperationId under ticket $env:SSM_ChangeTicket. No implicit reboot performed."
+              exit 0
+          }
+

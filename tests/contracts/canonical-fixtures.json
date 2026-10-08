@@ -1,0 +1,86 @@
+{
+  "changePlan": {
+    "schemaVersion": "1.0.0",
+    "planId": "plan-01234567-89ab-cdef-0123-456789abcdef",
+    "timestamp": "2026-10-07T22:00:00Z",
+    "environment": "lab",
+    "changeTicket": "CHG-100",
+    "targetNodes": [
+      {
+        "instanceId": "i-0123456789abcdef0",
+        "computerName": "SRV-CANARY-01",
+        "nodeClass": "memberServer",
+        "phase": 1
+      },
+      {
+        "instanceId": "i-0123456789abcdef1",
+        "computerName": "SRV-APP-02",
+        "nodeClass": "memberServer",
+        "phase": 2
+      }
+    ],
+    "approvedUpdates": [
+      {
+        "updateId": "12345678-1234-1234-1234-123456789012",
+        "revisionNumber": 1,
+        "title": "2026-10 Cumulative Update for Windows Server 2022"
+      }
+    ],
+    "action": "Install",
+    "workerPackage": {
+      "s3Uri": "s3://wuu-artifacts-lab-123456789012/packages/wuu-worker-v1.0.0.zip",
+      "versionId": "ver-abc1234",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "documentVersion": "1",
+    "maintenanceWindow": {
+      "startTime": "2026-10-07T22:00:00Z",
+      "deadlineTime": "2026-10-08T04:00:00Z"
+    },
+    "rebootPolicy": {
+      "rebootAllowed": true,
+      "maxRebootsPerNode": 1
+    },
+    "planDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "workerResult": {
+    "schemaVersion": "1.0.0",
+    "operationId": "op-scan-test",
+    "instanceId": "i-0123456789abcdef0",
+    "action": "Scan",
+    "status": "SUCCESS",
+    "exitCode": 0,
+    "rebootRequired": false,
+    "updates": [],
+    "startTime": "2026-10-07T22:00:00Z",
+    "endTime": "2026-10-07T22:01:00Z",
+    "errorMessage": null
+  },
+  "nodeInventory": {
+    "schemaVersion": "1.0.0",
+    "collectedAt": "2026-10-07T22:00:00Z",
+    "node": {
+      "instanceId": "i-0123456789abcdef0",
+      "hostname": "SRV-CANARY-01",
+      "domain": "example.test",
+      "osVersion": "10.0.20348",
+      "nodeClass": "memberServer",
+      "phaseEligibility": [1, 2, 3]
+    },
+    "wsus": {
+      "configuredServer": "https://wsus.example.test:8531",
+      "useWUServer": true
+    }
+  },
+  "updateSelection": {
+    "schemaVersion": "1.0.0",
+    "approvedUpdates": [
+      {
+        "updateId": "12345678-1234-1234-1234-123456789012",
+        "revisionNumber": 1,
+        "title": "2026-10 Cumulative Update for Windows Server 2022"
+      }
+    ]
+  }
+}
+

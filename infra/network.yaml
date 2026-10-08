@@ -1,0 +1,291 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  WUU2-CLI PrivateLink VPC Interface Endpoints, S3 Gateway Endpoint, and Network Security
+  for isolated Windows domain fleet patching. Adopts an existing VPC without internet egress.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Existing VPC ID where Windows managed domain instances reside.
+
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of private subnet IDs across AZs to attach interface endpoints to.
+
+  RouteTableIds:
+    Type: CommaDelimitedList
+    Description: List of private route table IDs to associate with the S3 Gateway endpoint.
+
+  AllowedClientCidrs:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of private subnet CIDR blocks permitted to communicate with endpoints.
+
+  EnableEc2Messages:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Conditionally create legacy ec2messages endpoint. Default false; current SSM Agent (>=3.3.2746.0)
+      communicates via ssmmessages. Only enable if legacy agents or specific regional GovCloud constraints require it.
+
+  EnableLogsEndpoint:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Create CloudWatch Logs interface endpoint for central patch execution audit logging.
+
+Conditions:
+  CreateEc2Messages: !Equals [!Ref EnableEc2Messages, "true"]
+  CreateLogs: !Equals [!Ref EnableLogsEndpoint, "true"]
+
+Resources:
+  # -----------------------------------------------------------------------------------------------
+  # Security Group for Interface Endpoints
+  # -----------------------------------------------------------------------------------------------
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "PrivateLink Interface Endpoints for Systems Manager and CloudWatch Logs"
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: "wuu-privatelink-endpoints-sg"
+        - Key: ManagedBy
+          Value: "WUU2-CLI-AWS"
+
+  EndpointIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EndpointSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: !Select [0, !Ref AllowedClientCidrs]
+      Description: "Allow HTTPS from private subnet CIDR to PrivateLink endpoints"
+
+  # -----------------------------------------------------------------------------------------------
+  # SSM Control Plane Interface Endpoint
+  # -----------------------------------------------------------------------------------------------
+  SsmInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssm"
+      VpcId: !Ref VpcId
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "EnforceTLSRequestsOnly"
+            Effect: "Deny"
+            Principal: "*"
+            Action: "ssm:*"
+            Resource: "*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: "AllowSsmAgentAndOperatorActions"
+            Effect: "Allow"
+            Principal: "*"
+            Action:
+              - "ssm:DescribeAssociation"
+              - "ssm:GetDeployablePatchSnapshotForInstance"
+              - "ssm:GetDocument"
+              - "ssm:DescribeDocument"
+              - "ssm:GetManifest"
+              - "ssm:GetParameter"
+              - "ssm:GetParameters"
+              - "ssm:ListAssociations"
+              - "ssm:ListInstanceAssociations"
+              - "ssm:PutInventory"
+              - "ssm:PutComplianceItems"
+              - "ssm:PutConfigurePackageResult"
+              - "ssm:UpdateAssociationStatus"
+              - "ssm:UpdateInstanceAssociationStatus"
+              - "ssm:UpdateInstanceInformation"
+              - "ssm:SendCommand"
+              - "ssm:ListCommands"
+              - "ssm:ListCommandInvocations"
+              - "ssm:GetCommandInvocation"
+            Resource: "*"
+      Tags:
+        - Key: Name
+          Value: "wuu-ssm-endpoint"
+
+  # -----------------------------------------------------------------------------------------------
+  # SSM Channel Messages Interface Endpoint
+  # -----------------------------------------------------------------------------------------------
+  SsmMessagesInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssmmessages"
+      VpcId: !Ref VpcId
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "EnforceTLSRequestsOnly"
+            Effect: "Deny"
+            Principal: "*"
+            Action: "ssmmessages:*"
+            Resource: "*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: "AllowSsmMessagesChannelTraffic"
+            Effect: "Allow"
+            Principal: "*"
+            Action:
+              - "ssmmessages:CreateControlChannel"
+              - "ssmmessages:CreateDataChannel"
+              - "ssmmessages:OpenControlChannel"
+              - "ssmmessages:OpenDataChannel"
+            Resource: "*"
+      Tags:
+        - Key: Name
+          Value: "wuu-ssmmessages-endpoint"
+
+  # -----------------------------------------------------------------------------------------------
+  # CloudWatch Logs Interface Endpoint (Optional/Default True)
+  # -----------------------------------------------------------------------------------------------
+  LogsInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateLogs
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
+      VpcId: !Ref VpcId
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "EnforceTLSRequestsOnly"
+            Effect: "Deny"
+            Principal: "*"
+            Action: "logs:*"
+            Resource: "*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: "AllowLogEventsIngestion"
+            Effect: "Allow"
+            Principal: "*"
+            Action:
+              - "logs:CreateLogGroup"
+              - "logs:CreateLogStream"
+              - "logs:DescribeLogGroups"
+              - "logs:DescribeLogStreams"
+              - "logs:PutLogEvents"
+            Resource: "*"
+      Tags:
+        - Key: Name
+          Value: "wuu-logs-endpoint"
+
+  # -----------------------------------------------------------------------------------------------
+  # EC2 Messages Interface Endpoint (Conditional / Legacy)
+  # -----------------------------------------------------------------------------------------------
+  Ec2MessagesInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEc2Messages
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ec2messages"
+      VpcId: !Ref VpcId
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "EnforceTLSRequestsOnly"
+            Effect: "Deny"
+            Principal: "*"
+            Action: "ec2messages:*"
+            Resource: "*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: "AllowEc2MessagesChannels"
+            Effect: "Allow"
+            Principal: "*"
+            Action:
+              - "ec2messages:AcknowledgeMessage"
+              - "ec2messages:DeleteMessage"
+              - "ec2messages:FailMessage"
+              - "ec2messages:GetEndpoint"
+              - "ec2messages:GetMessages"
+              - "ec2messages:SendReply"
+            Resource: "*"
+      Tags:
+        - Key: Name
+          Value: "wuu-ec2messages-endpoint"
+
+  # -----------------------------------------------------------------------------------------------
+  # S3 Gateway Endpoint (High-Throughput Artifact & Evidence Storage)
+  # -----------------------------------------------------------------------------------------------
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Gateway
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcId: !Ref VpcId
+      RouteTableIds: !Ref RouteTableIds
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "EnforceTLSRequestsOnly"
+            Effect: "Deny"
+            Principal: "*"
+            Action: "s3:*"
+            Resource: "*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: "AllowS3ArtifactAndEvidenceAccess"
+            Effect: "Allow"
+            Principal: "*"
+            Action:
+              - "s3:GetObject"
+              - "s3:PutObject"
+              - "s3:ListBucket"
+              - "s3:GetBucketLocation"
+            Resource:
+              - "arn:aws:s3:::*/*"
+              - "arn:aws:s3:::*"
+      Tags:
+        - Key: Name
+          Value: "wuu-s3-gateway-endpoint"
+
+Outputs:
+  EndpointSecurityGroupId:
+    Description: Security Group ID attached to interface endpoints
+    Value: !Ref EndpointSecurityGroup
+
+  SsmEndpointId:
+    Description: VPC Endpoint ID for SSM API
+    Value: !Ref SsmInterfaceEndpoint
+
+  SsmMessagesEndpointId:
+    Description: VPC Endpoint ID for SSM Messages
+    Value: !Ref SsmMessagesInterfaceEndpoint
+
+  LogsEndpointId:
+    Condition: CreateLogs
+    Description: VPC Endpoint ID for CloudWatch Logs
+    Value: !Ref LogsInterfaceEndpoint
+
+  S3GatewayEndpointId:
+    Description: VPC Gateway Endpoint ID for S3
+    Value: !Ref S3GatewayEndpoint
+

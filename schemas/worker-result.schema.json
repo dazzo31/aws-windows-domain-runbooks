@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WuuWorkerResult",
+  "description": "Schema for structured local WUU worker execution results and per-update outcomes.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "operationId",
+    "instanceId",
+    "action",
+    "status",
+    "rebootRequired",
+    "updates",
+    "startTime",
+    "endTime",
+    "exitCode"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "operationId": {
+      "type": "string"
+    },
+    "instanceId": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["Scan", "Download", "Install", "Bootstrap", "Inventory", "Reboot", "Verify"]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "SUCCESS",
+        "NO_OP",
+        "PARTIAL",
+        "FAILED",
+        "SKIPPED",
+        "TIMEOUT",
+        "REFUSED",
+        "REBOOT_REQUIRED"
+      ]
+    },
+    "rebootRequired": {
+      "type": "boolean"
+    },
+    "updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "updateId",
+          "revisionNumber",
+          "title",
+          "resultCode",
+          "hresult",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "updateId": {
+            "type": "string"
+          },
+          "revisionNumber": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "kbArticleId": {
+            "type": ["string", "null"]
+          },
+          "resultCode": {
+            "type": "integer"
+          },
+          "hresult": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{8}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["SUCCEEDED", "PARTIAL", "FAILED", "SKIPPED", "ALREADY_INSTALLED"]
+          }
+        }
+      }
+    },
+    "startTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "endTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "exitCode": {
+      "type": "integer",
+      "enum": [0, 3, 4, 5, 6, 7]
+    },
+    "errorMessage": {
+      "type": ["string", "null"]
+    }
+  }
+}
+
