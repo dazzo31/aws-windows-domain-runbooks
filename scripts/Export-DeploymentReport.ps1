@@ -1,7 +1,57 @@
-# Export-DeploymentReport.ps1
-# Generates and exports an authoritative end-to-end WUU deployment audit report.
-# Correlates AWS identities, Step Functions execution handles, SSM commands, and node evidence.
-# Supports -DryRun for offline CI validation.
+<#
+.SYNOPSIS
+    Generates and exports an authoritative end-to-end WUU deployment audit report.
+
+.DESCRIPTION
+    Correlates AWS caller identities, Step Functions execution handles, Systems Manager
+    command invocations, and individual node evidence artifacts into a unified audit record.
+    Formats report in JSON and Markdown, verifying digital signatures and checksums.
+    Supports -DryRun for offline CI validation.
+
+.PARAMETER PlanId
+    Identifier of the executed deployment plan.
+
+.PARAMETER ChangeTicket
+    Mandatory change ticket identifier associated with the deployment.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER ExecutionArn
+    AWS Step Functions execution ARN for the deployment workflow.
+
+.PARAMETER OutputPath
+    Optional filesystem path for saving the generated audit report.
+
+.PARAMETER DryRun
+    When present, synthesizes mock node results for offline verification.
+
+.OUTPUTS
+    System.Management.Automation.PSCustomObject containing the structured audit summary.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - ReadOnly / NonMutating: Performs strictly read and reporting operations.
+    - Dual Format: Produces both structured machine-readable JSON and human-readable Markdown.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - Valid PlanId and ChangeTicket identifiers provided.
+
+    FAILURE MODES & RECOVERY:
+    - Missing node evidence flags records as UNVERIFIED; does not crash execution.
+#>
 
 [CmdletBinding()]
 param(

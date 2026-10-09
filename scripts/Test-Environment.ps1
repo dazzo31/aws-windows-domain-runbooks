@@ -1,7 +1,50 @@
-# Test-Environment.ps1
-# Offline configuration validator for WUU2-CLI AWS-integrated environment adoption.
-# Validates environment definitions against schemas/environment.schema.json, verifies
-# WSUS-only authority, node-class segregation, phasing rules, and placeholder refusal.
+<#
+.SYNOPSIS
+    Offline configuration validator for WUU2-CLI AWS-integrated environment adoption.
+
+.DESCRIPTION
+    Validates environment definitions against schemas/environment.schema.json.
+    Verifies WSUS-only authority, node-class segregation, deployment phasing rules,
+    PrivateLink VPC endpoint requirements, and placeholder refusal for staging/prod environments.
+
+.PARAMETER Path
+    Direct path to an environment YAML configuration file.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER TemplateMode
+    Validates template-specific placeholders instead of live values.
+
+.PARAMETER RefusePlaceholders
+    Enforces rejection of unpopulated placeholder tokens (e.g., ACCOUNT_ID_HERE).
+
+.OUTPUTS
+    None. Outputs validation findings and summary to the host.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - WSUS Authority: Refuses configurations that do not enforce WSUS-only update authority.
+    - Tier Isolation: Verifies node-class separation rules are strictly declared.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - Environment YAML file exists in config/environments/.
+
+    FAILURE MODES & RECOVERY:
+    - Configuration syntax or policy errors halt execution with line/key details.
+#>
 
 [CmdletBinding()]
 param(

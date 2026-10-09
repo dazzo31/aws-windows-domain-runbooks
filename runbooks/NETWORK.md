@@ -1,8 +1,27 @@
+---
+title: "Network Architecture And Connectivity Qualification"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # Network Architecture And Connectivity Qualification
 
-Date: 2026-10-07  
-Status: G0/G1 Specification & Runbook  
-Scope: VPC PrivateLink endpoints, AD DNS conditional forwarding, WSUS TLS path, and node class port matrix.
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Safety Gate:** Verify network architecture enforces zero public internet egress for managed domain nodes.
+2. **PrivateLink Requirement:** Confirm interface VPC endpoints for `ssm`, `ec2messages`, `ssmmessages`, and `kms` are provisioned and resolvable.
+3. **WSUS Port & TLS:** Verify all WSUS traffic is constrained to HTTPS port 8531; warn and halt if cleartext port 8530 is specified.
+4. **Diagnostic Tool:** Use `scripts/Test-NodeConnectivity.ps1 -OfflineMode` for pre-flight validation.
 
 ---
 

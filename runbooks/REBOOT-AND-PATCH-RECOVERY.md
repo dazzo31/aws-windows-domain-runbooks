@@ -1,4 +1,27 @@
+---
+title: "Runbook: Reboot and Patch Recovery"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # Runbook: Reboot and Patch Recovery
+
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Safety Gate:** Verify target nodes are strictly member servers; refuse reboot workflows against Tier 0 Domain Controllers or CAs.
+2. **Reboot Loop Guard:** Enforce maximum one-reboot limit per operation. If node requests a second reboot, mark as `REBOOT_REQUIRED` and halt.
+3. **Boot ID Check:** Ensure postcheck verifies changed OS `BootId` before marking reboot verification as successful.
+4. **Rollback Trigger:** In the event of boot hangs or CBS service failure, execute targeted uninstall of the offending KB package.
 
 ## 1. Executive Summary & Scope
 

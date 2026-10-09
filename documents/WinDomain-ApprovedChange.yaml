@@ -1,5 +1,9 @@
 schemaVersion: '0.3'
-description: Approval wrapper for one pinned Command document version on one instance. Replace fixed role/approver ARNs before deployment; restrict direct SendCommand through IAM.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Approval wrapper for one pinned Command document version on one instance.
+  Replace fixed role/approver ARNs before deployment; restrict direct SendCommand through IAM.
+  Offline verified reference specification; requires lab qualification before live use.
 assumeRole: arn:aws:iam::111122223333:role/WinDomainAutomationRole
 parameters:
   InstanceId:

@@ -1,6 +1,56 @@
-# Publish-WorkerPackage.ps1
-# Validates worker package integrity and publishes immutable package artifact to S3.
-# Captures S3 VersionId and SHA256 in a promotion manifest. Supports -DryRun for offline CI.
+<#
+.SYNOPSIS
+    Validates worker package integrity and publishes immutable package artifact to S3.
+
+.DESCRIPTION
+    Validates worker package ZIP integrity, compares SHA256 against release-manifest.json,
+    uploads package to S3 with Object Lock/versioning, and captures S3 VersionId and hash
+    in a promotion manifest. Supports -DryRun for offline CI.
+
+.PARAMETER PackagePath
+    Path to the built worker package ZIP. Defaults to dist\packages\wuu-worker-package-$Environment.zip.
+
+.PARAMETER ManifestPath
+    Path to the package release-manifest.json. Defaults to dist\packages\release-manifest.json.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER BucketName
+    Target S3 bucket for storing artifacts.
+
+.PARAMETER OutputDir
+    Output directory for the promotion manifest. Defaults to dist\packages.
+
+.PARAMETER DryRun
+    When present, verifies local package and manifest integrity without uploading to S3.
+
+.OUTPUTS
+    Promotion record containing S3 URI, VersionId, SHA256, and ReleaseId.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Checksum Guard: Aborts if local ZIP hash does not match release manifest.
+    - Immutable Storage: Uploads to versioned bucket; never overwrites past versions.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - Built package ZIP and manifest must exist and match schemas/release-manifest.schema.json.
+
+    FAILURE MODES & RECOVERY:
+    - Hash mismatch throws error immediately; rebuild package with Build-WorkerPackage.ps1.
+#>
 
 [CmdletBinding()]
 param(

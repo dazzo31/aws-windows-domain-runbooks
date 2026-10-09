@@ -1,5 +1,9 @@
 schemaVersion: '2.2'
-description: Inspect/backup one GPO and link/unlink it at an OU. Does not edit policy settings, enforce links or touch default domain policies.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Inspect/backup one GPO and link/unlink it at an OU.
+  Does not edit policy settings, enforce links or touch default domain policies.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

@@ -1,4 +1,27 @@
+---
+title: "WSUS Diagnosis And Recovery"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # WSUS Diagnosis And Recovery
+
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Safety Gate:** Verify caller targets the designated WSUS server host; refuse execution against Domain Controllers.
+2. **Maintenance Serialization:** Prohibit concurrent synchronization, content resets, and cleanup tasks.
+3. **Database Guard:** Never attempt destructive SUSDB rebuilds or SQL schema modifications via generic automation documents.
+4. **Client Cache:** Use reversible SoftwareDistribution cache renames; never delete client IDs or state directories permanently.
 
 ## Prerequisites
 

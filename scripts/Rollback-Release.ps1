@@ -1,7 +1,54 @@
-# Rollback-Release.ps1
-# Rolls back SSM document default versions and worker package release pointers to a prior known-good version.
-# Preserves durable DynamoDB state and CloudWatch logs. Never disrupts an active running deployment.
-# Supports -DryRun.
+<#
+.SYNOPSIS
+    Rolls back SSM document default versions and worker package release pointers to a prior known-good version.
+
+.DESCRIPTION
+    Safely rolls back SSM document default versions and worker package pointers to a prior
+    numeric version. Asserts the absence of active running Step Functions executions before
+    initiating changes. Preserves durable DynamoDB state and CloudWatch logs. Supports -DryRun.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER ChangeTicket
+    Mandatory change ticket authorizing the rollback action.
+
+.PARAMETER TargetDocumentVersion
+    Target numeric version of SSM documents to restore.
+
+.PARAMETER PriorWorkerPackageVersionId
+    Optional S3 VersionId of the worker package to restore.
+
+.PARAMETER DryRun
+    When present, evaluates rollback steps without invoking AWS update APIs.
+
+.OUTPUTS
+    None. Execution output is written to host.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Active Run Guard: Strictly prohibited from rolling back while deployments are in flight.
+    - Preserves Audit: Never purges DynamoDB operation journals or CloudWatch logs.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - ChangeTicket and TargetDocumentVersion provided.
+    - AWS CLI or AWS Tools for PowerShell with SSM permissions.
+
+    FAILURE MODES & RECOVERY:
+    - Active executions abort rollback immediately. Wait for workflow completion or cancel first.
+#>
 
 [CmdletBinding()]
 param(

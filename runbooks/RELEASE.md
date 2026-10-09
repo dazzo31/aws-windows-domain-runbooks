@@ -1,4 +1,27 @@
+---
+title: "Runbook: Release Governance, Milestone Gates, and Environment Promotion"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # Runbook: Release Governance, Milestone Gates, and Environment Promotion
+
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Safety Gate:** Verify caller possesses `WuuPublisherRole` credentials and an approved `ChangeTicket`.
+2. **Upstream Invariant:** Never modify the upstream `WUU2-CLI` repository; consume pinned release packages only.
+3. **Immutable Promotion:** Publish SSM documents with numeric version pinning; do not update `$DEFAULT` automatically.
+4. **Environment Ordering:** Enforce strict staging progression: Lab -> Staging -> Production. Skipping tiers is prohibited.
 
 ## 1. Release Philosophy & Governance
 

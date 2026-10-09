@@ -1,8 +1,27 @@
+---
+title: "Environment Adoption Guide (G0 Milestone Gate)"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # Environment Adoption Guide (G0 Milestone Gate)
 
-Date: 2026-10-07  
-Status: G0 Pre-requisite Specification  
-Scope: Environment parameterization, support matrix, placeholder refusal rules, and adoption signoff.
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Safety Gate:** Verify target environment configuration file against `schemas/environment.schema.json`.
+2. **Placeholder Refusal:** Refuse adoption if unpopulated placeholder tokens (e.g., `ACCOUNT_ID_HERE`) are detected in staging or prod configs.
+3. **WSUS Authority Invariant:** Verify that `wsus.updateSource` strictly specifies the enterprise WSUS server with TLS port 8531.
+4. **Node Isolation:** Ensure Tier 0 controllers are strictly separated into dedicated maintenance pools with automated patching disabled.
 
 ---
 

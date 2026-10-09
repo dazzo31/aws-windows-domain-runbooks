@@ -1,7 +1,17 @@
 /**
- * @file state.mjs
- * @description Cloud state manager for durable DynamoDB operation tracking,
- * conditional node lock acquisition, fencing token validation, and state transitions.
+ * @fileoverview Cloud state manager for durable DynamoDB operation tracking, conditional node locking, and fencing tokens.
+ * @module cloud/state
+ * 
+ * @status UNTESTED_IN_LIVE_ENVIRONMENT
+ * @notice Validated via Node.js offline unit tests (Node 20+ test runner).
+ *         Has NOT been deployed to a live AWS account or invoked via live Step Functions.
+ *         Requires isolated AWS lab testing (Gate G1/G2) before deployment.
+ * 
+ * @security Least-Privilege IAM boundaries apply. Access scoped to wuu-state-$Environment DynamoDB table.
+ * @invariants
+ *   - Atomic Fencing Tokens: Mutex acquisition requires monotonic fencingToken increments.
+ *   - Conditional Writes: State transitions enforce condition expressions preventing concurrent writes.
+ *   - TTL Safeguard: Node locks enforce TTL to prevent permanently orphaned locks after host crashes.
  */
 
 /**

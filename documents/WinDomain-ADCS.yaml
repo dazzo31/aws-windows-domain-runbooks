@@ -1,5 +1,9 @@
 schemaVersion: '2.2'
-description: AD CS health and certificate request/issue/retrieve/revoke/CRL administration. CSR artifacts stay under ProgramData/WinDomain/Requests; private keys are never exported.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  AD CS health and certificate request/issue/retrieve/revoke/CRL administration.
+  CSR artifacts stay under ProgramData/WinDomain/Requests; private keys are never exported.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

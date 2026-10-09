@@ -1,7 +1,17 @@
 /**
- * @file build-plan.mjs
- * @description Cloud plan builder that synthesizes, validates, and hashes an immutable
- * deployment change plan conforming to schemas/change-plan.schema.json.
+ * @fileoverview Cloud plan builder that synthesizes, validates, and hashes an immutable deployment change plan conforming to schemas/change-plan.schema.json.
+ * @module cloud/build-plan
+ * 
+ * @status UNTESTED_IN_LIVE_ENVIRONMENT
+ * @notice Validated via Node.js offline unit tests (Node 20+ test runner).
+ *         Has NOT been deployed to a live AWS account or invoked via live Step Functions.
+ *         Requires isolated AWS lab testing (Gate G1/G2) before deployment.
+ * 
+ * @security Least-Privilege IAM boundaries apply. Denied direct node modification.
+ * @invariants
+ *   - Pure deterministic execution; cryptographic SHA256 digest over canonicalized JSON.
+ *   - Strict input validation against schemas/change-plan.schema.json.
+ *   - Prohibits scheduling updates past declared maintenance window deadlines.
  */
 
 import { createHash, randomUUID } from 'node:crypto';

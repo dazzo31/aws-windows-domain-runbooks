@@ -1,8 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
+  [UNTESTED REFERENCE TEMPLATE - LAB TESTING REQUIRED]
   WUU2-CLI Observability, Alerting, and Audit Notification Infrastructure.
   Defines encrypted SNS topics, EventBridge failure rules, and CloudWatch alarms
   for fleet execution failures, unknown-outcome quarantines, and audit delivery faults.
+  Validated offline via parser syntax tests. Not deployed to live AWS account.
+  Review change sets in isolated lab account before staging or production use.
 
 Parameters:
   Environment:

@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Dispatches post-reboot verification and health checks on managed nodes (boot ID, SSM, WSUS scan, core services).
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Dispatches post-reboot verification and health checks on managed nodes (boot ID, SSM, WSUS scan, core services).
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   OperationId:
     type: String

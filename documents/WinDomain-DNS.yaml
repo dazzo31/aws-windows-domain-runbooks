@@ -1,5 +1,9 @@
 schemaVersion: '2.2'
-description: Inspect/upsert/remove one A or CNAME record on a Windows DNS server. Excludes apex and underscore-prefixed infrastructure records.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Inspect/upsert/remove one A or CNAME record on a Windows DNS server.
+  Excludes apex and underscore-prefixed infrastructure records.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

@@ -1,9 +1,17 @@
 /**
- * @file report.mjs
- * @description Generates authoritative end-to-end WUU deployment audit reports.
- * Correlates AWS requester/approver/session IDs, Step Functions execution handles,
- * SSM command IDs, WUU operation IDs, and per-node update evidence.
- * Does not infer fleet compliance from batch counts alone.
+ * @fileoverview Generates authoritative end-to-end WUU deployment audit reports correlating cloud and node evidence.
+ * @module cloud/report
+ * 
+ * @status UNTESTED_IN_LIVE_ENVIRONMENT
+ * @notice Validated via Node.js offline unit tests (Node 20+ test runner).
+ *         Has NOT been deployed to a live AWS account or invoked via live Step Functions.
+ *         Requires isolated AWS lab testing (Gate G1/G2) before deployment.
+ * 
+ * @security Least-Privilege IAM boundaries apply. Denied direct node modification.
+ * @invariants
+ *   - Authoritative Correlation: Correlates AWS identities, Step Functions ARNs, SSM IDs, and node results.
+ *   - No Batch Guesses: Prohibits inferring fleet compliance from top-level batch counts alone.
+ *   - Integrity Checking: Verifies node result digest matches plan manifest before declaring compliance.
  */
 
 const INSTANCE_REGEX = /^i-[0-9a-f]{8,17}$/;

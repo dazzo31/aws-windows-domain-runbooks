@@ -1,7 +1,40 @@
-# Wuu.Result.psm1
-# Formats and writes structured WUU worker execution results.
-# Maps outcomes to explicit exit codes (0, 3, 4, 5, 6, 7). Never uses counts as exit codes.
-# PowerShell 5.1 native syntax.
+<#
+.SYNOPSIS
+    Formats and writes structured WUU worker execution results.
+
+.DESCRIPTION
+    Builds and writes dual-envelope execution results conforming to schemas/worker-result.schema.json.
+    Maps execution outcomes to explicit standardized exit codes (0, 3, 4, 5, 6, 7).
+    Never uses update counts as process exit codes. PowerShell 5.1 native syntax.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This module has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Deterministic Exit Codes:
+        0 = SUCCESS / NO_OP
+        3 = REBOOT_REQUIRED
+        4 = PARTIAL
+        5 = FAILED
+        6 = TIMEOUT
+        7 = REFUSED
+    - Schema Conformance: Output conforms to schemas/worker-result.schema.json.
+
+    PRECONDITIONS:
+    - Windows PowerShell 5.1 runtime.
+
+    FAILURE MODES & RECOVERY:
+    - Ensures result JSON is saved to C:\ProgramData\WUU\results\ even if stdout redirection fails.
+#>
 
 $ErrorActionPreference = 'Stop'
 

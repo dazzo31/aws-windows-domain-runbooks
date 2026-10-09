@@ -1,7 +1,49 @@
-# Invoke-LabQualification.ps1
-# End-to-end qualification runner across offline contracts and live lab environments.
-# Marks unavailable live resources as SKIP or BLOCKED; never reports a false PASS.
-# Retains account-, node-, and version-specific qualification artifacts in reports/.
+<#
+.SYNOPSIS
+    End-to-end qualification runner across offline contracts and live lab environments.
+
+.DESCRIPTION
+    Executes the end-to-end qualification suite across unit checks, offline syntax parsing,
+    IAM authorization rules, document limits, and optional live lab connectivity.
+    Marks unavailable live resources as SKIP or BLOCKED; never reports a false PASS.
+    Retains environment- and version-specific qualification artifacts in reports/.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER ChangeTicket
+    Change ticket authorizing the qualification run. Defaults to 'QUAL-001'.
+
+.PARAMETER SkipLiveChecks
+    When present, runs strictly offline static and unit validations, bypassing live AWS/AD calls.
+
+.OUTPUTS
+    Structured qualification report saved to reports/ and summarized to host.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Honest Reporting: Never reports PASS for skipped or mocked live checks; marks as SKIP/BLOCKED.
+    - Zero Mutation: Runs read-only diagnostic and static validation checks only.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED/BLOCKED.
+
+    PRECONDITIONS:
+    - Node.js 20+ available for running contract and parsing suites.
+    - Windows PowerShell 5.1 runtime.
+
+    FAILURE MODES & RECOVERY:
+    - Any failed offline gate aborts qualification; consult generated report in reports/.
+#>
 
 [CmdletBinding()]
 param(

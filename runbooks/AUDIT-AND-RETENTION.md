@@ -1,4 +1,27 @@
+---
+title: "Runbook: Audit, Evidence Lineage, and Data Retention"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # Runbook: Audit, Evidence Lineage, and Data Retention
+
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Safety Gate:** Verify caller possesses `WuuOperatorRole` or audit retrieval credentials.
+2. **Lineage Verification:** Ensure the unbroken chain of custody (`ChangeTicket` -> `PlanId` -> `ExecutionArn` -> `CommandId` -> `OperationId` -> Node Evidence) is complete.
+3. **Data Minimization:** Prohibit recording plain-text secrets, credentials, or customer PII in audit payloads.
+4. **Immutability:** Never overwrite existing S3 evidence objects or alter historical DynamoDB records.
 
 ## 1. Executive Summary & Evidence Lineage
 

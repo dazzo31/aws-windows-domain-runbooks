@@ -1,5 +1,9 @@
 schemaVersion: '2.2'
-description: Inspect local machine certificates, request a template-based certificate or renew one machine certificate. No user-store enrollment, key export, CA signing-key renewal or application rebinding.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Inspect local machine certificates, request a template-based certificate or renew one machine certificate.
+  No user-store enrollment, key export, CA signing-key renewal or application rebinding.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

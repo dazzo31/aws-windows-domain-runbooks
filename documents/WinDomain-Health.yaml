@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Read-only AD forest/domain, replication, DC service, SYSVOL/NETLOGON, DNS discovery and time diagnostics. Run on a DC.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Read-only AD forest/domain, replication, DC service, SYSVOL/NETLOGON, DNS discovery and time diagnostics.
+  Run on a DC. Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Server:
     type: String

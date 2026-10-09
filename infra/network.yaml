@@ -1,7 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
+  [UNTESTED REFERENCE TEMPLATE - LAB TESTING REQUIRED]
   WUU2-CLI PrivateLink VPC Interface Endpoints, S3 Gateway Endpoint, and Network Security
   for isolated Windows domain fleet patching. Adopts an existing VPC without internet egress.
+  Validated offline via parser syntax tests. Not deployed to live AWS account.
+  Review change sets in isolated lab account before staging or production use.
 
 Parameters:
   VpcId:

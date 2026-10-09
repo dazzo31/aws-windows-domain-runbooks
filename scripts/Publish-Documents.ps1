@@ -1,7 +1,52 @@
-# Publish-Documents.ps1
-# Publishes reviewed Systems Manager documents as immutable, numeric versions.
-# Produces a promotion manifest mapping document names to numeric versions and content hashes.
-# Never silently changes production default versions. Supports -DryRun for offline CI.
+<#
+.SYNOPSIS
+    Publishes reviewed Systems Manager documents as immutable numeric versions.
+
+.DESCRIPTION
+    Validates document syntax and sizes against the AWS 64 KB limit, publishes documents
+    to AWS Systems Manager as immutable numeric versions, and produces a promotion
+    manifest mapping document names to versions and SHA256 hashes. Never silently changes
+    production default versions without explicit ticket verification.
+    Supports -DryRun for offline CI.
+
+.PARAMETER DocumentsDir
+    Directory containing reviewed SSM YAML documents. Defaults to documents/.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER OutputDir
+    Output directory for the promotion manifest. Defaults to dist\promotion.
+
+.PARAMETER DryRun
+    When present, performs validation and hash generation without calling AWS SSM APIs.
+
+.OUTPUTS
+    Promotion manifest written to dist\promotion\ssm-documents-manifest.json.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Size Limit: Rejects any document exceeding 65,536 bytes before publishing.
+    - Version Immutability: Creates numbered versions; never overwrites in place.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - Documents directory exists with valid YAML files.
+
+    FAILURE MODES & RECOVERY:
+    - Document validation failures abort the publishing run before modifying AWS state.
+#>
 
 [CmdletBinding()]
 param(

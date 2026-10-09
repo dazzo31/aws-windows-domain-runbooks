@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Inspect/prestage/disable/move one AD computer. Excludes domain controllers; does not reset machine passwords or join hosts.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Inspect/prestage/disable/move one AD computer. Excludes domain controllers; does not reset machine passwords or join hosts.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

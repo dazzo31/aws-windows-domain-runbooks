@@ -1,6 +1,48 @@
-# Test-AwsAuthorization.ps1
-# Evaluates IAM role policies, node-class scoping, secret access isolation,
-# and anti-tag-tampering rules defined in infra/iam.yaml and infra/secrets.yaml.
+<#
+.SYNOPSIS
+    Evaluates IAM role policies, node-class scoping, secret access isolation, and tag protection.
+
+.DESCRIPTION
+    Validates IAM role definitions, resource scoping, secret path boundaries, and tag-tampering
+    protections defined across infra/iam.yaml and infra/secrets.yaml. Enforces node class
+    isolation (memberServer vs domainController vs certificateAuthority) and checks least-privilege
+    boundaries. Supports offline evaluation.
+
+.PARAMETER IamTemplatePath
+    Path to the IAM CloudFormation template. Defaults to infra\iam.yaml.
+
+.PARAMETER SecretsTemplatePath
+    Path to the Secrets CloudFormation template. Defaults to infra\secrets.yaml.
+
+.PARAMETER OfflineMode
+    When present, evaluates template YAML structures statically without calling AWS APIs.
+
+.OUTPUTS
+    None. Test results are output to the host.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Tier Boundary: Verifies memberServer roles cannot access Domain Controller secrets.
+    - ReadOnly / NonMutating: Evaluates policies without changing AWS configurations.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - CloudFormation templates in infra/ must exist.
+
+    FAILURE MODES & RECOVERY:
+    - Policy violations produce descriptive error messages indicating the rule failed.
+#>
 
 [CmdletBinding()]
 param(

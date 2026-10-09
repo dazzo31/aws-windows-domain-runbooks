@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Scoped AD user lifecycle. LocalSystem needs delegated AD rights; passwords are fetched from SecureString Parameter Store on the node.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Scoped AD user lifecycle. LocalSystem needs delegated AD rights; passwords are fetched from SecureString Parameter Store on the node.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

@@ -1,17 +1,43 @@
-# Wuu.LocalUpdate.psm1
-# Local Windows Update Agent (WUA) COM automation module for noninteractive execution.
-# Extracted from WUU2-CLI local worker scripts with remote-dispatch and process-exits removed.
-#
-# Attribution:
-# Derived from WUU / WUU2-CLI (https://github.com/dazzo31/WUU2-CLI)
-# Original authors: Boe Prox, Tyler Siegrist, HanSolo71, dazzo31.
-# Licensed under the MIT License.
-#
-# Invariants:
-# 1. Enforces WSUS as update source: sets ServerSelection = 2 (ssManagedServer).
-# 2. Revalidates update GUID and revision against approved selection manifest.
-# 3. Requires explicit EULA approval policy; never unconditionally auto-accepts EULAs.
-# 4. Reports native ResultCode and HRESULTs; never returns update counts as exit codes.
+<#
+.SYNOPSIS
+    Local Windows Update Agent (WUA) COM automation module for noninteractive execution.
+
+.DESCRIPTION
+    Provides core Windows Update servicing operations on managed nodes by automating the
+    native Microsoft.Update.Session COM interface. Implements Search, Download, and Install
+    workflows in single-threaded apartment (-STA) mode. Extracted from WUU2-CLI local worker
+    scripts with remote-dispatch and process-exits removed.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This module has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    ATTRIBUTION:
+    - Derived from WUU / WUU2-CLI (https://github.com/dazzo31/WUU2-CLI)
+    - Original authors: Boe Prox, Tyler Siegrist, HanSolo71, dazzo31.
+    - Licensed under the MIT License.
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - WSUS Authority: Sets ServerSelection = 2 (ssManagedServer); prohibited from Microsoft Update.
+    - Manifest Verification: Matches update GUID and RevisionNumber against selection manifest.
+    - EULA Safety: Never auto-accepts EULAs unless explicit approval policy is passed.
+    - Native Error Reporting: Emits COM ResultCode and hex HRESULT; never uses update count as exit code.
+
+    PRECONDITIONS:
+    - Windows PowerShell 5.1 in STA mode under SYSTEM or elevated Administrator.
+    - WUA COM service (wuauserv) available.
+
+    FAILURE MODES & RECOVERY:
+    - COM HRESULT errors are captured in result objects and returned with exit code 5 (FAILED).
+#>
 
 $ErrorActionPreference = 'Stop'
 

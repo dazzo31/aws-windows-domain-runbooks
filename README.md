@@ -1,5 +1,18 @@
 # AWS Windows Domain Runbooks
 
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> All code, automation documents, CloudFormation templates, and operational runbooks in this repository represent **offline-verified reference specifications**. They have **never been deployed to AWS or executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure and document must be rehearsed and qualified in an isolated testbed lab (Gates G1–G3) prior to staging or production use.
+
+## Autonomous LLM & Agent Safety Contract
+When an AI assistant, autonomous agent, or LLM operates in this repository or guides execution:
+1. **Change Ticket Gate:** Every mutation (`Apply=true`, stack deployment, package publish) requires a verified `ChangeTicket`.
+2. **Preview Mode:** Always execute inspection/diagnostic actions (`Apply=false`) before any mutating operation.
+3. **Reconcile Before Retry:** Never retry a timed-out command without querying the durable DynamoDB operation journal.
+4. **WSUS Authority Invariant:** WSUS is the sole update authority; never fall back to public Microsoft Update or AWS Patch Manager.
+5. **Node Classification Boundary:** Member server roles are strictly isolated from Tier 0 Domain Controllers and CAs.
+
 Standalone starter pack for a future project running self-managed Active Directory on EC2. It contains executable AWS Systems Manager documents and operational runbooks. Nothing in this pack has been deployed to AWS or exercised against a real domain.
 
 **Status:** locally validated templates, not production-certified automation. Select Windows Server versions and validate every operation in an isolated lab before deployment. This is not an AWS Managed Microsoft AD pack.

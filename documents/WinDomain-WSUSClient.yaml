@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Local Windows Update policy/service diagnostics, computer policy refresh, detection and reversible SoftwareDistribution rename. Does not delete client IDs or install updates.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Local Windows Update policy/service diagnostics, computer policy refresh, detection and reversible SoftwareDistribution rename.
+  Does not delete client IDs or install updates. Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

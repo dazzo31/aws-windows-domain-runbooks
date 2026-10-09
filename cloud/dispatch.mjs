@@ -1,7 +1,17 @@
 /**
- * @file dispatch.mjs
- * @description Lambda handler for acquiring durable node locks and dispatching
- * numeric-pinned SSM SendCommand executions to approved EC2 targets.
+ * @fileoverview Lambda handler for acquiring durable node locks and dispatching numeric-pinned SSM SendCommand executions to approved EC2 targets.
+ * @module cloud/dispatch
+ * 
+ * @status UNTESTED_IN_LIVE_ENVIRONMENT
+ * @notice Validated via Node.js offline unit tests (Node 20+ test runner).
+ *         Has NOT been deployed to a live AWS account or invoked via live Step Functions.
+ *         Requires isolated AWS lab testing (Gate G1/G2) before deployment.
+ * 
+ * @security Least-Privilege IAM boundaries apply. Denied direct node modification.
+ * @invariants
+ *   - Node Lock Fencing: Must successfully acquire DynamoDB node lock before dispatching SSM command.
+ *   - Numeric Document Pinning: SSM DocumentVersion must be numeric-pinned; $DEFAULT prohibited in production.
+ *   - ChangeTicket Required: Mandatory change ticket required for all mutating actions.
  */
 
 import { acquireNodeLock } from './state.mjs';

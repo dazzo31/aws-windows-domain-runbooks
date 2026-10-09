@@ -1,9 +1,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
+  [UNTESTED REFERENCE TEMPLATE - LAB TESTING REQUIRED]
   WUU2-CLI Identity Boundaries and Role Segregation.
   Defines least-privilege IAM roles: Operator, Approver, Publisher,
   Automation Service, Coordinator, Managed Node, and AD Password Worker.
   Enforces anti-tag-tampering, node-class resource scoping, and scoped PassRole.
+  Validated offline via parser syntax tests. Not deployed to live AWS account.
+  Review change sets in isolated lab account before staging or production use.
 
 Parameters:
   Environment:

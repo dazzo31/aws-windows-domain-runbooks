@@ -1,7 +1,36 @@
-# Wuu.LocalState.psm1
-# Manages system-scoped mutex, atomic ACL-protected per-operation journals,
-# local boot identity tracking, and abandoned-operation inspection on managed nodes.
-# PowerShell 5.1 native syntax.
+<#
+.SYNOPSIS
+    Manages system-scoped mutex, per-operation journals, and local boot identity tracking.
+
+.DESCRIPTION
+    Provides local host state coordination for WUU worker processes on Windows nodes.
+    Acquires and releases the named cross-process mutex (Global\WUU_Servicing_Lock),
+    creates atomic ACL-protected per-operation journals under C:\ProgramData\WUU\journal\,
+    tracks OS boot identity to detect reboots, and inspects abandoned or stalled operations.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This module has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Mutex Safety: System mutex handle is stored in script scope and disposed in finally blocks.
+    - Journal ACLs: Journals created with SYSTEM/Administrators-only permissions.
+    - Native Servicing Check: Refuses execution if TiWorker.exe or TrustedInstaller is active.
+
+    PRECONDITIONS:
+    - Elevated Administrator or NT AUTHORITY\SYSTEM execution context.
+
+    FAILURE MODES & RECOVERY:
+    - Abandoned mutex handling acquires lock safely while logging prior termination.
+#>
 
 $ErrorActionPreference = 'Stop'
 

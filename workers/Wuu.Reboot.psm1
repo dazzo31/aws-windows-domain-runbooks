@@ -1,7 +1,35 @@
-# Wuu.Reboot.psm1
-# Manages pending reboot detection, boot checkpointing, and controlled SSM exit 3010 reboots.
-# Enforces a strict one-reboot-per-operation limit to prevent restart loops.
-# PowerShell 5.1 native syntax.
+<#
+.SYNOPSIS
+    Manages pending reboot detection, boot checkpointing, and controlled SSM exit 3010 reboots.
+
+.DESCRIPTION
+    Provides reboot safety and lifecycle management for WUU servicing operations.
+    Inspects Component Based Servicing (CBS), WindowsUpdate Auto Update, PendingFileRenameOperations,
+    and SCCM reboot indicators. Enforces a strict one-reboot-per-operation limit to prevent
+    restart loops. Implements controlled SSM Agent reboot signals (exit code 3010).
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This module has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Loop Guard: Checks local reboot counter; throws REFUSED if maximum reboots exceeded.
+    - Clean Exit: Emits exit code 3010 when SSM Agent coordination is required.
+
+    PRECONDITIONS:
+    - Windows PowerShell 5.1 runtime under SYSTEM or elevated Administrator.
+
+    FAILURE MODES & RECOVERY:
+    - Reboots aborted if unexpected active servicing processes detected.
+#>
 
 $ErrorActionPreference = 'Stop'
 

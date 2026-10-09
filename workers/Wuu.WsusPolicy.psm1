@@ -1,7 +1,36 @@
-# Wuu.WsusPolicy.psm1
-# Enforces WSUS as the sole update authority on managed nodes.
-# Validates UseWUServer, TLS bindings, policy non-drift, and prohibits Microsoft Update fallback.
-# PowerShell 5.1 native syntax.
+<#
+.SYNOPSIS
+    Enforces WSUS as the sole update authority on managed nodes.
+
+.DESCRIPTION
+    Validates and enforces local registry policy governing Windows Update Agent behavior.
+    Verifies UseWUServer is enabled, validates HTTPS TLS endpoint bindings on port 8531,
+    detects policy drift from Active Directory Group Policy, and strictly prohibits
+    Dual Scan and fallback to public Microsoft Update. PowerShell 5.1 native syntax.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This module has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - WSUS Authority Invariant: WSUS is the sole update authority.
+    - Prohibited Fallbacks: Prohibits fallback to Microsoft Update or AWS Patch Manager.
+    - TLS Requirement: Enforces HTTPS URL with port 8531 for WSUS communications.
+
+    PRECONDITIONS:
+    - Windows PowerShell 5.1 runtime under SYSTEM or elevated Administrator.
+
+    FAILURE MODES & RECOVERY:
+    - If policy does not match expected WSUS or is missing, Test-WuuWsusPolicyValid returns false.
+#>
 
 $ErrorActionPreference = 'Stop'
 

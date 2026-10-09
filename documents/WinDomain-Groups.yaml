@@ -1,5 +1,9 @@
 schemaVersion: '2.2'
-description: Inspect/create security groups and add/remove one principal. No protected-group changes or nested group membership writes.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Inspect/create security groups and add/remove one principal.
+  No protected-group changes or nested group membership writes.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

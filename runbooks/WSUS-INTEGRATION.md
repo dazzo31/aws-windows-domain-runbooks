@@ -1,8 +1,27 @@
+---
+title: "WSUS Integration And Authority Qualification Runbook"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # WSUS Integration And Authority Qualification Runbook
 
-Date: 2026-10-07  
-Status: G1/G2 Operational Runbook  
-Scope: Verification of WSUS as sole update authority, policy drift qualification, unapproved update prevention, and client/server evidence collection.
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **WSUS Sole Authority:** WSUS is the sole update authority. Never configure or recommend public Microsoft Update endpoints.
+2. **Dual Scan Prohibition:** Verify registry key `DisableDualScan = 1` and `UseWUServer = 1` on every target node.
+3. **Selection Manifest:** Download and Install actions require explicit matching against an approved update selection manifest.
+4. **Pre-flight Policy Check:** Execute `Wuu.WsusPolicy.psm1` pre-flight checks before invoking Windows Update Agent COM APIs.
 
 ---
 

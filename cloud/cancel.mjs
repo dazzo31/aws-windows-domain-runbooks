@@ -1,8 +1,17 @@
 /**
- * @file cancel.mjs
- * @description Lambda handler for graceful fleet deployment cancellation and
- * maintenance window cutoff management. Stops new dispatches while preserving
- * active running installer reconciliations to prevent servicing store corruption.
+ * @fileoverview Lambda handler for graceful fleet deployment cancellation and maintenance window cutoff management.
+ * @module cloud/cancel
+ * 
+ * @status UNTESTED_IN_LIVE_ENVIRONMENT
+ * @notice Validated via Node.js offline unit tests (Node 20+ test runner).
+ *         Has NOT been deployed to a live AWS account or invoked via live Step Functions.
+ *         Requires isolated AWS lab testing (Gate G1/G2) before deployment.
+ * 
+ * @security Least-Privilege IAM boundaries apply. Denied direct node modification.
+ * @invariants
+ *   - Graceful cancellation: Stops new dispatches while preserving active running installer reconciliations.
+ *   - Servicing Store Integrity: Never interrupts an in-flight native installation to avoid component store corruption.
+ *   - Enforces maintenance window budget requirements before initiating dispatches.
  */
 
 /**

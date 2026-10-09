@@ -1,7 +1,55 @@
-# Invoke-WuuDeployment.ps1
-# Discovers approved EC2 member servers, synthesizes a frozen deployment plan,
-# submits the plan to SSM Automation (Wuu-ApprovedDeployment), and returns the execution handle.
-# Supports -DryRun for offline CI validation.
+<#
+.SYNOPSIS
+    Discovers approved EC2 member servers, synthesizes a frozen deployment plan, and submits to SSM.
+
+.DESCRIPTION
+    Discovers EC2 member server nodes matching approval tags, synthesizes a frozen change
+    plan conforming to schemas/change-plan.schema.json, submits the plan to SSM Automation
+    (Wuu-ApprovedDeployment), and returns the execution handle.
+    Supports -DryRun for offline CI validation.
+
+.PARAMETER ChangeTicket
+    Mandatory change ticket identifier authorizing the deployment invocation.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER Action
+    Servicing action to execute across discovered targets ('Scan', 'Download', 'Install'). Defaults to 'Scan'.
+
+.PARAMETER RebootAllowed
+    Allows controlled reboot execution if update installation requires it.
+
+.PARAMETER DryRun
+    When present, performs discovery and plan generation without initiating SSM execution.
+
+.OUTPUTS
+    System.Management.Automation.PSCustomObject with PlanId, ExecutionArn, NodeCount, and Status.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Tier Boundary: Scoped strictly to memberServer nodes; never targets domain controllers.
+    - WSUS Authority: Directs nodes to WSUS catalog only; prohibits public Microsoft Update.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - Mandatory ChangeTicket provided.
+    - AWS CLI or AWS Tools for PowerShell with SSM/EC2 permissions.
+
+    FAILURE MODES & RECOVERY:
+    - Plan validation failure aborts submission prior to calling AWS APIs.
+#>
 
 [CmdletBinding()]
 param(
@@ -87,7 +135,7 @@ Write-Host "  Deadline: $($plan.maintenanceWindow.deadlineTime)" -ForegroundColo
 # 3. Submit Plan to Step Functions State Machine
 $stateMachineArn = "arn:aws:states:us-east-1:123456789012:stateMachine:wuu-deployment-$Environment"
 $executionName = "$($plan.planId)-$((Get-Date).Ticks)"
-$executionArn = "arn:aws:states:us-east-1:123456789012:execution:wuu-deployment-$Environment:$executionName"
+$executionArn = "arn:aws:states:us-east-1:123456789012:execution:wuu-deployment-${Environment}:$executionName"
 
 if ($DryRun) {
     Write-Host "`n[DryRun] Simulated Submission to Step Functions: wuu-deployment-$Environment" -ForegroundColor Green

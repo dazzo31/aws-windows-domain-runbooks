@@ -1,3 +1,12 @@
+/**
+ * @fileoverview CLI helper for offline CloudFormation and SSM YAML parsing with custom intrinsic tags.
+ * @module scripts/parse-yaml
+ * 
+ * @status UNTESTED_IN_LIVE_ENVIRONMENT
+ * @notice Offline syntax validation helper. Used by tests and build scripts.
+ *         Requires isolated testbed lab execution before production use.
+ */
+
 const fs = require('node:fs');
 const path = require('node:path');
 const YAML = require('yaml');

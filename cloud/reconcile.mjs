@@ -1,7 +1,17 @@
 /**
- * @file reconcile.mjs
- * @description Lambda handler for polling SSM command invocations, parsing dual-envelope
- * worker artifacts, separating native from transport failures, and quarantining unknown outcomes.
+ * @fileoverview Lambda handler for polling SSM command invocations, parsing dual-envelope worker artifacts, separating native from transport failures, and quarantining unknown outcomes.
+ * @module cloud/reconcile
+ * 
+ * @status UNTESTED_IN_LIVE_ENVIRONMENT
+ * @notice Validated via Node.js offline unit tests (Node 20+ test runner).
+ *         Has NOT been deployed to a live AWS account or invoked via live Step Functions.
+ *         Requires isolated AWS lab testing (Gate G1/G2) before deployment.
+ * 
+ * @security Least-Privilege IAM boundaries apply. Denied direct node modification.
+ * @invariants
+ *   - Dual-Envelope Parsing: Parses SSM invocation output alongside durable worker artifact JSON.
+ *   - Transport Isolation: Clearly distinguishes SSM delivery failures from Windows Update COM failures.
+ *   - Quarantine Unknowns: Unparseable results transition node to QUARANTINED state; releases lock safely.
  */
 
 import { releaseNodeLock, recordNodeResult } from './state.mjs';

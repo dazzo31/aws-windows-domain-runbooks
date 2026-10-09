@@ -1,8 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
+  [UNTESTED REFERENCE TEMPLATE - LAB TESTING REQUIRED]
   WUU2-CLI Storage Infrastructure.
   Defines encrypted, versioned S3 bucket for immutable worker packages,
   execution plans, and result artifacts with TLS-only enforcement and access logging.
+  Validated offline via parser syntax tests. Not deployed to live AWS account.
+  Review change sets in isolated lab account before staging or production use.
 
 Parameters:
   Environment:

@@ -1,6 +1,50 @@
-# Test-NodeConnectivity.ps1
-# Evaluates network connectivity, AD DNS forwarding, AWS PrivateLink reachability,
-# and WSUS TLS access per node class. Supports offline/mock validation for CI.
+<#
+.SYNOPSIS
+    Evaluates network connectivity, AD DNS forwarding, AWS PrivateLink reachability, and WSUS access.
+
+.DESCRIPTION
+    Validates node network requirements per node class: DNS resolution for domain controllers,
+    AWS PrivateLink interface VPC endpoints (SSM, EC2Messages, SSMMessages, KMS), and
+    WSUS TLS endpoint reachability on port 8531. Supports offline/mock validation for CI.
+
+.PARAMETER ConfigPath
+    Direct path to an environment YAML configuration file.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER NodeClass
+    Target node classification to evaluate ('memberServer', 'domainController', 'certificateAuthority', 'all').
+
+.PARAMETER OfflineMode
+    When present, evaluates network configuration and endpoint definitions without making network calls.
+
+.OUTPUTS
+    None. Test results are output to the host.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - ReadOnly: Diagnostic probe only; performs zero network or node reconfigurations.
+    - WSUS Security: Verifies port 8531 TLS requirement; warns on insecure port 8530.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - Environment YAML file available or default loaded.
+
+    FAILURE MODES & RECOVERY:
+    - Missing VPC endpoints or unreachable WSUS reported with troubleshooting guidance.
+#>
 
 [CmdletBinding()]
 param(

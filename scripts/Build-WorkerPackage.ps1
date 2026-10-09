@@ -1,7 +1,50 @@
-# Build-WorkerPackage.ps1
-# Packages local WUU worker modules into an immutable, versioned, attributed ZIP artifact.
-# Computes cryptographic SHA256 hashes and generates release-manifest.json conforming
-# to schemas/release-manifest.schema.json. Strict exclusion of credentials and secrets.
+<#
+.SYNOPSIS
+    Packages local WUU worker modules into an immutable, versioned, attributed ZIP artifact.
+
+.DESCRIPTION
+    Builds the WUU worker package ZIP archive from the local workers directory. Computes
+    cryptographic SHA256 hashes, generates release-manifest.json conforming to
+    schemas/release-manifest.schema.json, and enforces strict exclusion of credentials,
+    temporary files, and local logs.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER OutputDir
+    Output directory for the generated ZIP and manifest. Defaults to dist\packages.
+
+.PARAMETER Force
+    Overwrites existing package artifacts in the output directory if specified.
+
+.OUTPUTS
+    System.Management.Automation.PSCustomObject with PackagePath, ManifestPath, Sha256, and ReleaseId.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts; runs offline during build.
+    - Upstream Invariant: Does not alter upstream WUU2-CLI code; consumes pinned commit.
+    - Zero Secrets: Prohibited from packaging credentials, tokens, or environment keys.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - Windows PowerShell 5.1 with System.IO.Compression available.
+    - Workers source directory exists at workers/.
+
+    FAILURE MODES & RECOVERY:
+    - Missing workers or parse error aborts build before writing partial artifacts.
+    - Recovery: Inspect workers/ files, correct syntax, and re-run build.
+#>
 
 [CmdletBinding()]
 param(

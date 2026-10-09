@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Local WSUS diagnostics, targeted service/pool restart, asynchronous content reset, synchronization and one cleanup option. No SUSDB rebuild or IIS-wide reset.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Local WSUS diagnostics, targeted service/pool restart, asynchronous content reset, synchronization and one cleanup option.
+  No SUSDB rebuild or IIS-wide reset. Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

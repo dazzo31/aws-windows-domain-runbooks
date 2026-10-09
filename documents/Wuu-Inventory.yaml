@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Gathers node identity, domain membership, EC2 metadata, WSUS configuration, and determines fleet patching eligibility.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Gathers node identity, domain membership, EC2 metadata, WSUS configuration, and determines fleet patching eligibility.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   ExpectedDomain:
     type: String

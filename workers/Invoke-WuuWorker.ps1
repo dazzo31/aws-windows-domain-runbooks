@@ -1,7 +1,63 @@
-# Invoke-WuuWorker.ps1
-# Master local entrypoint for noninteractive WUU worker execution on managed nodes.
-# Runs under SSM Agent (SYSTEM) in Windows PowerShell 5.1 -STA -NonInteractive.
-# Enforces mutual exclusion, journal persistence, WSUS authority, and structured result writing.
+<#
+.SYNOPSIS
+    Master local entrypoint for noninteractive WUU worker execution on managed nodes.
+
+.DESCRIPTION
+    Executes under AWS Systems Manager Agent (NT AUTHORITY\SYSTEM) in Windows PowerShell 5.1
+    with single-threaded apartment (-STA) and -NonInteractive flags.
+    Enforces cross-process mutual exclusion via system mutex, records atomic per-operation
+    journals, validates WSUS-only authority, invokes local servicing tasks, and emits
+    dual-envelope structured results conforming to schemas/worker-result.schema.json.
+
+.PARAMETER OperationId
+    Unique UUID identifying the execution unit for idempotent tracking.
+
+.PARAMETER Action
+    Servicing action to execute ('Scan', 'Download', 'Install', 'Reboot', 'Verify').
+
+.PARAMETER SelectionManifestJson
+    JSON string containing array of approved update identity objects for Download/Install.
+
+.PARAMETER ExpectedWsusUrl
+    Expected WSUS server URL; verified against local policy before searching updates.
+
+.PARAMETER AllowEulaAcceptance
+    Boolean governing explicit EULA acceptance; never accepted unconditionally.
+
+.PARAMETER ChangeTicket
+    Mandatory change ticket required when Action is 'Install' or 'Reboot'.
+
+.PARAMETER PriorBootId
+    Baseline boot identity used during 'Verify' action to prove a reboot completed.
+
+.OUTPUTS
+    Writes JSON result envelope to C:\ProgramData\WUU\results\<OperationId>.json and stdout.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Strictly non-interactive; no msg boxes, prompts, or modal dialogs.
+    - WSUS Authority: ServerSelection = 2 (ssManagedServer) enforced; zero public egress.
+    - Mutex Exclusion: Global\WUU_Servicing_Lock acquired; returns 7 (REFUSED) if busy.
+    - Exit Codes: 0 = SUCCESS/NO_OP, 3 = REBOOT_REQUIRED, 4 = PARTIAL, 5 = FAILED, 7 = REFUSED.
+
+    PRECONDITIONS:
+    - Windows PowerShell 5.1 running under SYSTEM or elevated Administrator.
+    - Required worker modules present in same directory.
+
+    FAILURE MODES & RECOVERY:
+    - On unhandled exception, releases mutex and writes FAILED envelope to journal.
+    - Recovery: Inspect journal at C:\ProgramData\WUU\journal\<OperationId>.json.
+#>
 
 [CmdletBinding()]
 param(

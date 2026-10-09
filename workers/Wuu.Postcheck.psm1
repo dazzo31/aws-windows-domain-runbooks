@@ -1,8 +1,35 @@
-# Wuu.Postcheck.psm1
-# Verifies system health following update installation and reboot.
-# Confirms changed Boot ID, SSM Agent health, cleared reboot flags,
-# WSUS catalog consistency, and critical member server services.
-# PowerShell 5.1 native syntax.
+<#
+.SYNOPSIS
+    Verifies system health following update installation and reboot.
+
+.DESCRIPTION
+    Performs post-installation health verification on managed nodes. Confirms changed Boot ID
+    to prove a reboot actually occurred, checks AmazonSSMAgent service health, verifies
+    cleared reboot flags in CBS and WindowsUpdate registry keys, and validates critical
+    member server services. PowerShell 5.1 native syntax.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This module has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Reboot Verification: Uses BootId comparison to ensure node did not fail to reboot.
+    - ReadOnly / Diagnostic: Evaluates node health without modifying configuration.
+
+    PRECONDITIONS:
+    - Windows PowerShell 5.1 runtime under SYSTEM or elevated Administrator.
+
+    FAILURE MODES & RECOVERY:
+    - Failing postchecks mark node result as FAILED or PARTIAL; logs specific health check failure.
+#>
 
 $ErrorActionPreference = 'Stop'
 

@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Dispatches noninteractive WSUS update scan on managed nodes via local WUA module.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Dispatches noninteractive WSUS update scan on managed nodes via local WUA module.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   OperationId:
     type: String

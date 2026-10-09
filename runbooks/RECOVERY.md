@@ -1,8 +1,27 @@
+---
+title: "Servicing Recovery And Reconcile-Before-Retry Runbook"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # Servicing Recovery And Reconcile-Before-Retry Runbook
 
-Date: 2026-10-07  
-Status: G0/G1 Operational Runbook  
-Scope: Active servicing failure modes, abandoned operation recovery, lock reconciliation, and cloud/local disagreement handling.
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Safety Gate:** Reconcile before retry. Never blindly retry a timed-out command without querying the local node journal and DynamoDB state table.
+2. **Abandoned Operations:** If an operation was interrupted by host crash, inspect `C:\ProgramData\WUU\journal\` to determine whether servicing completed before clearing locks.
+3. **CBS Servicing Check:** Verify `TiWorker.exe` and `TrustedInstaller.exe` are completely idle before releasing the node mutex.
+4. **Quarantine State:** If cloud state and node state disagree, transition the node to `QUARANTINED` and alert the incident owner.
 
 ---
 

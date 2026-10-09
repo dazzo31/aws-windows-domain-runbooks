@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Qualifies and initializes pinned local WUU directories and security baselines on managed nodes without altering WSUS policy, joining domains, or elevating domain privileges.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Qualifies and initializes pinned local WUU directories and security baselines on managed nodes without altering WSUS policy,
+  joining domains, or elevating domain privileges. Offline verified reference specification; requires lab qualification before live use.
 parameters:
   Action:
     type: String

@@ -1,5 +1,8 @@
 schemaVersion: '2.2'
-description: Dispatches an approved, controlled reboot on a managed node via SSM exit code 3010. Enforces one-reboot limit.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Dispatches an approved, controlled reboot on a managed node via SSM exit code 3010. Enforces one-reboot limit.
+  Offline verified reference specification; requires lab qualification before live use.
 parameters:
   OperationId:
     type: String

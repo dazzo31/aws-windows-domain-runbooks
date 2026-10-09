@@ -1,5 +1,8 @@
 schemaVersion: '0.3'
-description: Immutable approval wrapper for WUU fleet deployment. Fixed environment approver and automation roles. Binds immutable PlanId, PlanDigest, and ChangeTicket.
+description: >
+  [UNTESTED - LAB QUALIFICATION REQUIRED]
+  Immutable approval wrapper for WUU fleet deployment. Fixed environment approver and automation roles.
+  Binds immutable PlanId, PlanDigest, and ChangeTicket. Offline verified reference specification; requires lab qualification before live use.
 assumeRole: arn:aws:iam::123456789012:role/wuu-automation-service-lab
 parameters:
   PlanId:

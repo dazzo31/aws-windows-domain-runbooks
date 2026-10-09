@@ -1,7 +1,17 @@
 /**
- * @file validate-plan.mjs
- * @description Post-approval plan validator. Re-checks cryptographic digest,
- * maintenance window deadlines, and node class eligibility prior to dispatch.
+ * @fileoverview Post-approval plan validator re-checking cryptographic digest, deadlines, and node eligibility.
+ * @module cloud/validate-plan
+ * 
+ * @status UNTESTED_IN_LIVE_ENVIRONMENT
+ * @notice Validated via Node.js offline unit tests (Node 20+ test runner).
+ *         Has NOT been deployed to a live AWS account or invoked via live Step Functions.
+ *         Requires isolated AWS lab testing (Gate G1/G2) before deployment.
+ * 
+ * @security Least-Privilege IAM boundaries apply. Denied direct node modification.
+ * @invariants
+ *   - Cryptographic Integrity: Computes planDigest and verifies match against approved plan.
+ *   - Maintenance Window Enforcement: Rejects plans whose maintenance window deadline has elapsed.
+ *   - Class Validation: Verifies every targeted node belongs to an approved nodeClass.
  */
 
 import { computePlanDigest } from './build-plan.mjs';

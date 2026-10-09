@@ -1,6 +1,53 @@
-# Deploy-Environment.ps1
-# Deploys and configures WUU CloudFormation stacks and promotes versioned artifacts.
-# Uses CloudFormation Change Sets for controlled review. Supports -DryRun.
+<#
+.SYNOPSIS
+    Deploys and configures WUU CloudFormation stacks and promotes versioned artifacts.
+
+.DESCRIPTION
+    Executes the ordered deployment of CloudFormation infrastructure stacks across
+    storage, state, IAM, orchestration, and observability layers. Uses CloudFormation
+    Change Sets for human/LLM review. Supports -DryRun for offline syntactic and
+    dependency verification.
+
+.PARAMETER Environment
+    Deployment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER ChangeTicket
+    Mandatory change ticket identifier authorizing the infrastructure deployment.
+
+.PARAMETER Region
+    Target AWS region. Defaults to 'us-east-1'.
+
+.PARAMETER DryRun
+    When present, validates template existence and change set planning without executing mutations.
+
+.OUTPUTS
+    None. Status is output to the host and logged.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - ChangeTicket Required: Mandatory ChangeTicket parameter; fails immediately if empty.
+    - Tier Boundary: Scoped strictly to AWS infrastructure; never touches domain member nodes directly.
+    - Exit Codes: 0 = SUCCESS, 1 = FAILED.
+
+    PRECONDITIONS:
+    - AWS CLI or AWS Tools for PowerShell with active credentials possessing CloudFormation deploy privileges.
+    - Templates in infra/ must pass parser verification.
+
+    FAILURE MODES & RECOVERY:
+    - Stack deployment failures trigger automated change set rollback.
+    - Recovery: Inspect CloudFormation Events console or run Rollback-Release.ps1.
+#>
 
 [CmdletBinding()]
 param(

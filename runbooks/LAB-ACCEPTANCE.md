@@ -1,4 +1,27 @@
+---
+title: "Lab Acceptance And Release Gates"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # Lab Acceptance And Release Gates
+
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Safety Gate:** Verify caller executes in an isolated non-production lab environment (Gate G1).
+2. **Sequential Progression:** Never jump to staging or production qualification before all offline and lab gates pass cleanly.
+3. **Honest Reporting:** Record any unavailable testbeds as `SKIP` or `BLOCKED`; never emit a false `PASS`.
+4. **Disaster Recovery Pre-requisite:** Verify system state backup before initiating any live test on Domain Controllers.
 
 These gates are for the future project. None have been executed against AWS, AD, WSUS or AD CS during pack creation. Use an isolated test account/domain/CA with disposable objects and verified backups; never begin by testing against production Tier 0.
 

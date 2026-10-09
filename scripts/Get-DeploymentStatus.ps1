@@ -1,7 +1,59 @@
-# Get-DeploymentStatus.ps1
-# Queries Step Functions and SSM execution status for a WUU deployment.
-# Maps cloud execution states to structured WUU exit codes (0/3/4/5/6/7), extracts
-# dual-envelope result artifacts, and provides disconnected-client resume. Supports -DryRun.
+<#
+.SYNOPSIS
+    Queries Step Functions and SSM execution status for a WUU deployment.
+
+.DESCRIPTION
+    Polls or retrieves the execution status of AWS Step Functions state machines and
+    Systems Manager Automation workflows. Maps cloud execution states to structured WUU
+    exit codes (0, 3, 4, 5, 6, 7), extracts dual-envelope result artifacts, and supports
+    disconnected-client state resumption. Supports -DryRun for offline testing.
+
+.PARAMETER ExecutionArn
+    AWS Step Functions execution ARN to query.
+
+.PARAMETER PlanId
+    Plan identifier to locate execution if ARN is omitted.
+
+.PARAMETER Environment
+    Target environment tier ('lab', 'staging', 'prod'). Defaults to 'lab'.
+
+.PARAMETER ResumeDisconnected
+    When specified, reattaches to an in-flight execution without re-triggering.
+
+.PARAMETER ContinueOnTimeout
+    Allows workflow to process completed nodes even if partial node timeouts occurred.
+
+.PARAMETER ContinueOnFailure
+    Allows status aggregation to complete despite individual node failures.
+
+.PARAMETER DryRun
+    When present, produces simulated status outputs without invoking AWS APIs.
+
+.OUTPUTS
+    System.Management.Automation.PSCustomObject with status summary, phase progress, and mapped exit code.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This script has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Idempotent Query: Pure polling operation; never triggers side-effects or state mutation.
+    - Exit Codes: 0 = SUCCESS, 3 = REBOOT_REQUIRED, 4 = PARTIAL, 5 = FAILED, 6 = TIMEOUT, 7 = REFUSED.
+
+    PRECONDITIONS:
+    - Either ExecutionArn or PlanId must be provided.
+
+    FAILURE MODES & RECOVERY:
+    - Network drops can be resumed by re-running with -ResumeDisconnected.
+#>
 
 [CmdletBinding()]
 param(

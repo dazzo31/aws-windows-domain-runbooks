@@ -1,7 +1,36 @@
-# Wuu.Artifacts.psm1
-# Local node worker artifact verification, secure extraction, and integrity management.
-# Enforces cryptographic SHA256 verification, anti-path-traversal, anti-junction security,
-# and rollback to known-good worker packages. PowerShell 5.1 native syntax.
+<#
+.SYNOPSIS
+    Local node worker artifact verification, secure extraction, and integrity management.
+
+.DESCRIPTION
+    Provides functions for verifying and extracting WUU worker packages onto managed nodes.
+    Enforces cryptographic SHA256 verification, anti-path-traversal protection, anti-junction/
+    reparse-point security checks, and rollback to known-good worker packages. PowerShell 5.1 native syntax.
+
+.NOTES
+    ===================================================================================
+    OPERATIONAL STATUS: UNTESTED REFERENCE IMPLEMENTATION — LAB TESTING REQUIRED
+    -----------------------------------------------------------------------------------
+    This module has been validated syntactically and offline via automated unit checks.
+    It has NEVER been executed against a live production Windows Domain Controller,
+    WSUS server, or AWS production account.
+    MANDATORY PRE-REQUISITE: Must be exercised in an isolated testbed lab (Gate G1-G3)
+    prior to any production consideration.
+    ===================================================================================
+
+    LLM-SAFETY-CONTRACT & INVARIANTS:
+    - NonInteractive: Executes without interactive prompts.
+    - Path Traversal Guard: Refuses package ZIPs containing entries outside target root.
+    - Reparse Point Guard: Refuses extraction targets that are NTFS junctions or symlinks.
+    - Checksum Enforcement: Refuses package extraction if SHA256 mismatch detected.
+
+    PRECONDITIONS:
+    - Windows PowerShell 5.1 runtime.
+    - System.IO.Compression available.
+
+    FAILURE MODES & RECOVERY:
+    - Integrity or security check failure throws terminating error; cleans temporary directory.
+#>
 
 $ErrorActionPreference = 'Stop'
 

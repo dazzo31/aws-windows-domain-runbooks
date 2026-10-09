@@ -1,4 +1,27 @@
+---
+title: "Deployment And Permissions"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # Deployment And Permissions
+
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Safety Gate:** Verify caller possesses `WuuPublisherRole` or infrastructure admin credentials with an active `ChangeTicket`.
+2. **Preview Mode:** Always validate CloudFormation change sets (`DryRun`) before stack execution.
+3. **IAM Least Privilege:** Enforce strict separation between AD management nodes, DC diagnostics, and member servers.
+4. **No Blanket Grants:** Never grant full Domain Admin or CA Admin rights to generic SSM instance profiles.
 
 All commands in this runbook are examples for the future environment. They were not executed during pack creation. Replace every sample account, ARN, instance, domain, OU, region, template and policy scope.
 

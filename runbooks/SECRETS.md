@@ -1,8 +1,27 @@
+---
+title: "Secrets Management And Credential Isolation Runbook"
+status: "UNTESTED_REFERENCE_SPECIFICATION"
+offline_verified: true
+lab_testing_required: true
+target_audience:
+  - "Human Systems Administrators"
+  - "Autonomous LLM / AI Orchestration Agents"
+last_updated: "2026-10-08"
+---
+
 # Secrets Management And Credential Isolation Runbook
 
-Date: 2026-10-07  
-Status: G0/G1 Specification & Runbook  
-Scope: AWS Systems Manager Parameter Store SecureStrings, customer-managed KMS key policies, and Tier 0 credential boundary enforcement.
+> [!WARNING]
+> **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
+> The procedures, commands, and architectural patterns in this runbook have been verified offline against simulated fixtures and syntax parsers. They have **never been executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
+> Every procedure must be rehearsed and verified in an isolated testbed lab (Gates G1–G3) before considering live staging or production execution.
+
+## LLM Execution Instructions
+When an Autonomous Agent or LLM is reading or executing steps from this runbook:
+1. **Zero Raw Secrets Invariant:** Never pass passwords, secrets, or API keys directly as SSM document parameters or shell arguments.
+2. **Path Boundary:** Verify secret paths adhere strictly to `/wuu/<environment>/secrets/<nodeClass>/` scoping.
+3. **KMS Isolation:** Only Tier 0 AD Password Worker roles may possess KMS Decrypt rights; patch workers are strictly denied access.
+4. **Audit Cleansing:** Ensure all script outputs and logs scrub secret references and parameter paths.
 
 ---
 
