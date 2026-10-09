@@ -71,6 +71,52 @@ To maintain absolute separation, the integration adheres to two strictly defined
    * Adheres to the dual-envelope result schema: writes a structured JSON file conforming to `schemas/worker-result.schema.json` to `C:\ProgramData\WUU\results\` and emits a concise summary to stdout.
    * Maps outcomes to explicit exit codes: `0` (Success/No-Op), `3` (Reboot Required), `4` (Partial), `5` (Failed), `6` (Timeout), and `7` (Refused). Never returns update counts as exit codes.
 
+### 2.4 Developer Workflow: Propagating Logic Changes from WUU2-CLI
+
+When developing or modifying Windows Update Agent (WUA) automation logic in `WUU2-CLI`, changes can be translated and deployed into this AWS integration architecture rapidly and cleanly without redesigning Systems Manager infrastructure.
+
+#### The 3-Step Promotion Workflow
+
+```mermaid
+flowchart LR
+    A[1. Modify Logic in WUU2-CLI] --> B[2. Mirror to workers/Wuu.*.psm1]
+    B --> C[3. Run Build-WorkerPackage.ps1]
+    C --> D[4. Run Publish-WorkerPackage.ps1]
+    D --> E[Nodes Execute New Logic Automatically]
+```
+
+1. **Step 1: Mirror Core Logic into `workers/`:**
+   - **WUA Search / Download / Install:** Reflect function improvements from `WUU2-CLI/Scripts/Download-Patches.ps1` or `Install-Patches.ps1` into [`workers/Wuu.LocalUpdate.psm1`](../workers/Wuu.LocalUpdate.psm1).
+   - **WSUS Policy Evaluation:** Update [`workers/Wuu.WsusPolicy.psm1`](../workers/Wuu.WsusPolicy.psm1).
+   - **Result Formatting & Telemetry:** Update [`workers/Wuu.Result.psm1`](../workers/Wuu.Result.psm1).
+   - **Local Mutex & State:** Update [`workers/Wuu.LocalState.psm1`](../workers/Wuu.LocalState.psm1).
+
+2. **Step 2: Rebuild the Worker Package Bundle:**
+   Execute the automated packaging runner:
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Build-WorkerPackage.ps1 -Environment lab
+   ```
+   This generates an updated `dist/packages/wuu-worker-package-<env>.zip`, computes per-file SHA-256 hashes, and emits a compliant `release-manifest.json`.
+
+3. **Step 3: Publish to S3:**
+   Upload the immutable bundle to the versioned S3 artifact repository:
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Publish-WorkerPackage.ps1 -Environment lab
+   ```
+   *Outcome:* On the next deployment execution, SSM managed nodes retrieve the new package version from S3 and execute the updated logic immediately.
+
+#### Interface Boundary Decision Matrix: When Do SSM Documents Need Updates?
+
+Because Systems Manager documents (`documents/Wuu-*.yaml`) act strictly as thin entrypoint wrappers around `Invoke-WuuWorker.ps1`, **SSM YAML documents remain completely static for internal logic modifications**:
+
+| Type of Change in `WUU2-CLI` | Do SSM YAML Documents Change? | Required Actions |
+|---|---|---|
+| **WUA COM Bug Fixes & Optimization**<br>(e.g., improved download retry backoff, better HRESULT translation, driver search tweaks) | **NO** | 1. Update `workers/Wuu.LocalUpdate.psm1`<br>2. Run `Build-WorkerPackage.ps1`<br>3. Run `Publish-WorkerPackage.ps1` |
+| **WSUS Registry & Dual Scan Detection**<br>(e.g., adding Windows Server 2025 policy checks) | **NO** | 1. Update `workers/Wuu.WsusPolicy.psm1`<br>2. Run `Build-WorkerPackage.ps1`<br>3. Run `Publish-WorkerPackage.ps1` |
+| **Telemetry & Log Formatting Changes**<br>(e.g., adding detailed per-KB metadata to JSON result) | **NO** | 1. Update `workers/Wuu.Result.psm1`<br>2. Run `Build-WorkerPackage.ps1`<br>3. Run `Publish-WorkerPackage.ps1` |
+| **New Worker Input Parameter**<br>(e.g., adding a new `-BandwidthThrottle` or `-MaxDownloadHours` parameter) | **YES**<br>*(Minimal)* | Add the parameter definition (3–5 lines of YAML) to the relevant document (e.g. `Wuu-Download.yaml`) so SSM can pass it via `ENV_VAR`. |
+| **Brand-New Lifecycle Operation**<br>(e.g., adding a new `DriverRollback` or `FeatureUpdate` phase) | **YES** | Author a new companion document (e.g., `Wuu-Rollback.yaml`) following the pattern of `Wuu-Install.yaml`. |
+
 ---
 
 ## 3. Mandatory Non-Regression & Compatibility Baseline
