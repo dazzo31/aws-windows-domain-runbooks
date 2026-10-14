@@ -1,5 +1,11 @@
 # AWS Windows Domain Runbooks
 
+[![Offline Validation](https://github.com/dazzo31/aws-windows-domain-runbooks/actions/workflows/validate.yml/badge.svg)](https://github.com/dazzo31/aws-windows-domain-runbooks/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![PowerShell 5.1](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://learn.microsoft.com/powershell/)
+[![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org/)
+[![Target: Windows Server](https://img.shields.io/badge/Target-Windows%20Server%202019%20%7C%202022%20%7C%202025-0078D6.svg)](https://learn.microsoft.com/windows-server/)
+
 > [!WARNING]
 > **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
 > All code, automation documents, CloudFormation templates, and operational runbooks in this repository represent **offline-verified reference specifications**. They have **never been deployed to AWS or executed against a live enterprise Active Directory forest or production WSUS hierarchy**.  
@@ -16,6 +22,35 @@ When an AI assistant, autonomous agent, or LLM operates in this repository or gu
 Standalone starter pack for a future project running self-managed Active Directory on EC2. It contains executable AWS Systems Manager documents and operational runbooks. Nothing in this pack has been deployed to AWS or exercised against a real domain.
 
 **Status:** locally validated templates, not production-certified automation. Select Windows Server versions and validate every operation in an isolated lab before deployment. This is not an AWS Managed Microsoft AD pack.
+
+## Architecture Overview
+
+The automation implements a **decoupled consumer model**: upstream tools like `WUU2-CLI` remain untouched, while AWS Systems Manager and Step Functions act as the durable execution transport without replacing WSUS as the update authority.
+
+```mermaid
+flowchart TD
+    subgraph ControlPlane["AWS Control Plane"]
+        Approval["SSM Automation: WinDomain-ApprovedChange\n(aws:approve human gate)"] --> StepFunc["Step Functions: 5-Phase Fleet Rollout\n(Canary -> Phased Waves)"]
+        StepFunc --> Lambda["Lambda Handlers\n(Dispatch, Reconcile, Cancel, Report)"]
+        Lambda <--> Dynamo["DynamoDB\n(Operation Journal & Fencing Token)"]
+        Lambda <--> S3["S3 Bucket\n(Signed Manifests & Worker Packages)"]
+    end
+
+    subgraph Transport["Execution Transport"]
+        Lambda --> SSM["AWS Systems Manager\n(SSM Run Command)"]
+    end
+
+    subgraph ManagedNodes["Managed EC2 Windows Instances"]
+        SSM --> Worker["Local PowerShell 5.1 Worker\n(Invoke-WuuWorker.ps1)"]
+        Worker --> Mutex["Servicing Lock\n(Global\\WUU_Servicing_Lock)"]
+        Worker --> Wuu["WUU2-CLI Core Engine\n(Local Runspace)"]
+    end
+
+    subgraph Authority["On-Prem / VPC Domain Infrastructure"]
+        Wuu --> WSUS["WSUS Server / SUSDB\n(Sole Update Authority - No MS Update)"]
+        Worker --> AD["Active Directory Domain Services\n(Domain Controllers & Tier 0 Isolation)"]
+    end
+```
 
 ## Documents
 
