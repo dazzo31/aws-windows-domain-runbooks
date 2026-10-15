@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1",
-    "test:pack": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1",
+    "test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1 && node --test tests/fleet-orchestration.test.mjs && node tests/validate-infra.cjs",
+    "test:powershell": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1",
+    "test:orchestration": "node --test tests/fleet-orchestration.test.mjs",
+    "test:infra": "node tests/validate-infra.cjs",
     "test:documents": "node tests/read-documents.cjs",
     "test:planning": "node tests/validate-planning.cjs",
-    "validate": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1"
+    "validate": "npm test"
   },
-  "devDependencies": { "yaml": "^2.8.1" }
+  "devDependencies": {
+    "yaml": "^2.8.1"
+  }
 }

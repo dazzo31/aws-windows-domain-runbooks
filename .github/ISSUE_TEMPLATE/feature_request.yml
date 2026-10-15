@@ -1,0 +1,49 @@
+name: Feature / Runbook Proposal
+description: Propose a new operational runbook, SSM document, or infrastructure enhancement.
+labels: ["enhancement", "proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Proposals should adhere to the repository's decoupled consumer model and safety invariants.
+  - type: dropdown
+    id: domain_area
+    attributes:
+      label: Domain Area
+      description: What architectural domain does this proposal address?
+      options:
+        - "Active Directory Operations & Lifecycle"
+        - "WSUS Update Authority & Servicing"
+        - "Active Directory Certificate Services (PKI)"
+        - "DNS & Group Policy (GPO)"
+        - "Fleet Coordination & Step Functions"
+        - "Disaster Recovery & Node Quarantine"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Proposal Summary
+      description: What new operation, document, or runbook procedure are you proposing?
+    validations:
+      required: true
+  - type: textarea
+    id: safety_model
+    attributes:
+      label: Safety & Invariant Considerations
+      description: |
+        How will this proposal uphold repository safety invariants?
+        - Does it default to read-only/preview (`Apply=false`)?
+        - Does it require a `ChangeTicket` for state modifications?
+        - Does it preserve WSUS-only authority (no public Windows Update)?
+        - How does it maintain Tier 0 Domain Controller isolation?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative designs or trade-offs considered?
+    validations:
+      required: false

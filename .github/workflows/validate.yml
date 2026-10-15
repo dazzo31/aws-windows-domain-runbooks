@@ -50,6 +50,9 @@ jobs:
       - name: Run Cloud Orchestration Unit Tests
         run: node --test tests/fleet-orchestration.test.mjs
 
+      - name: Validate CloudFormation Infrastructure Templates
+        run: node tests/validate-infra.cjs
+
       - name: Run PowerShell Pack Invariant Gate
         shell: powershell
         run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1
