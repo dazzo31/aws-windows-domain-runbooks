@@ -56,4 +56,19 @@ const documents = fs.readdirSync(root).filter(name => name.endsWith('.yaml')).ma
 assert.equal(documents.length, 19, 'The catalog must contain 19 documents (11 domain pack + 8 WUU integration documents)');
 const enrollment = documents.find(document => document.name === 'WinDomain-CertificateEnrollment.yaml');
 assert.ok(enrollment.scripts[0].includes('certreq.exe -enroll -machine -q -cert $env:SSM_Thumbprint Renew'), 'Renewal must identify the certificate with -cert');
+
+// Inventory & Drift Protection: verify that all documents, runbooks, and CFN templates are indexed in README.md
+const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+for (const doc of documents) {
+  assert.ok(readme.includes(`documents/${doc.name}`), `README.md missing link to SSM document: documents/${doc.name}`);
+}
+const runbookDir = path.join(__dirname, '..', 'runbooks');
+for (const rb of fs.readdirSync(runbookDir).filter(f => f.endsWith('.md'))) {
+  assert.ok(readme.includes(`runbooks/${rb}`), `README.md missing link to runbook: runbooks/${rb}`);
+}
+const infraDir = path.join(__dirname, '..', 'infra');
+for (const tmpl of fs.readdirSync(infraDir).filter(f => f.endsWith('.yaml'))) {
+  assert.ok(readme.includes(`infra/${tmpl}`), `README.md missing link to infrastructure template: infra/${tmpl}`);
+}
+
 process.stdout.write(JSON.stringify(documents));

@@ -49,3 +49,4 @@ for (const tmpl of expectedTemplates) {
 }
 
 console.log(`PASS: All ${expectedTemplates.length} CloudFormation templates parsed and validated.`);
+

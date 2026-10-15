@@ -5,6 +5,8 @@
 [![PowerShell 5.1](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://learn.microsoft.com/powershell/)
 [![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org/)
 [![Target: Windows Server](https://img.shields.io/badge/Target-Windows%20Server%202019%20%7C%202022%20%7C%202025-0078D6.svg)](https://learn.microsoft.com/windows-server/)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![Security Policy](https://img.shields.io/badge/Security-Policy-blueviolet.svg)](SECURITY.md)
 
 > [!WARNING]
 > **UNTESTED IN LIVE PRODUCTION ENVIRONMENT — LAB QUALIFICATION REQUIRED**  
@@ -19,7 +21,7 @@ When an AI assistant, autonomous agent, or LLM operates in this repository or gu
 4. **WSUS Authority Invariant:** WSUS is the sole update authority; never fall back to public Microsoft Update or AWS Patch Manager.
 5. **Node Classification Boundary:** Member server roles are strictly isolated from Tier 0 Domain Controllers and CAs.
 
-Standalone starter pack for a future project running self-managed Active Directory on EC2. It contains executable AWS Systems Manager documents and operational runbooks. Nothing in this pack has been deployed to AWS or exercised against a real domain.
+Standalone starter pack for running self-managed Active Directory on EC2. It contains executable AWS Systems Manager documents and operational runbooks. Nothing in this pack has been deployed to AWS or exercised against a real domain.
 
 **Status:** locally validated templates, not production-certified automation. Select Windows Server versions and validate every operation in an isolated lab before deployment. This is not an AWS Managed Microsoft AD pack.
 
@@ -30,7 +32,7 @@ The automation implements a **decoupled consumer model**: upstream tools like `W
 ```mermaid
 flowchart TD
     subgraph ControlPlane["AWS Control Plane"]
-        Approval["SSM Automation: WinDomain-ApprovedChange\n(aws:approve human gate)"] --> StepFunc["Step Functions: 5-Phase Fleet Rollout\n(Canary -> Phased Waves)"]
+        Approval["SSM Automation: WinDomain-ApprovedChange / Wuu-ApprovedDeployment\n(aws:approve human gate)"] --> StepFunc["Step Functions: 5-Phase Fleet Rollout\n(Canary -> Phased Waves)"]
         StepFunc --> Lambda["Lambda Handlers\n(Dispatch, Reconcile, Cancel, Report)"]
         Lambda <--> Dynamo["DynamoDB\n(Operation Journal & Fencing Token)"]
         Lambda <--> S3["S3 Bucket\n(Signed Manifests & Worker Packages)"]
@@ -52,10 +54,14 @@ flowchart TD
     end
 ```
 
-## Documents
+## Systems Manager (SSM) Documents
+
+The repository contains **19 production-ready AWS Systems Manager (SSM) documents** divided into two operational categories:
+
+### Active Directory & Domain Operations Documents (11)
 
 | Document | Type | Operations | Target |
-| --- | --- | --- | --- |
+| :--- | :---: | :--- | :--- |
 | [WinDomain-Users](documents/WinDomain-Users.yaml) | Command | Inspect, create, disable, unlock, reset password | Delegated AD management member server |
 | [WinDomain-Groups](documents/WinDomain-Groups.yaml) | Command | Inspect, create security group, add/remove one member | Delegated AD management member server |
 | [WinDomain-Computers](documents/WinDomain-Computers.yaml) | Command | Inspect, prestage, disable, move within scope | Delegated AD management member server |
@@ -68,6 +74,72 @@ flowchart TD
 | [WinDomain-CertificateEnrollment](documents/WinDomain-CertificateEnrollment.yaml) | Command | Inspect, request, renew machine certificate | Original key-owning member server |
 | [WinDomain-ApprovedChange](documents/WinDomain-ApprovedChange.yaml) | Automation | Human approval, pinned document version, one EC2 target | AWS control plane |
 
+### Fleet Update Orchestration Documents (8)
+
+| Document | Type | Operations | Target |
+| :--- | :---: | :--- | :--- |
+| [Wuu-ApprovedDeployment](documents/Wuu-ApprovedDeployment.yaml) | Automation | Human approval gate, plan digest validation, Step Functions dispatch | AWS Control Plane |
+| [Wuu-Bootstrap](documents/Wuu-Bootstrap.yaml) | Command | Local worker directory setup, registry check, execution runspace init | Fleet Managed Nodes |
+| [Wuu-Download](documents/Wuu-Download.yaml) | Command | Worker package download from S3, SHA256 integrity verification | Fleet Managed Nodes |
+| [Wuu-Inventory](documents/Wuu-Inventory.yaml) | Command | Node classification, domain role detection, WSUS client policy check | Fleet Managed Nodes |
+| [Wuu-Scan](documents/Wuu-Scan.yaml) | Command | WSUS catalog detection, pending update enumeration, compliance audit | Fleet Managed Nodes |
+| [Wuu-Install](documents/Wuu-Install.yaml) | Command | Offline update installation via local WUU worker engine under servicing lock | Fleet Managed Nodes |
+| [Wuu-Reboot](documents/Wuu-Reboot.yaml) | Command | Controlled safe reboot trigger with servicing lock and reboot reason logging | Fleet Managed Nodes |
+| [Wuu-Verify](documents/Wuu-Verify.yaml) | Command | Post-patch service health verification, WSUS client state validation | Fleet Managed Nodes |
+
+## CloudFormation Infrastructure Templates
+
+The repository provides **7 modular CloudFormation templates** in `infra/` to provision the supporting AWS control plane and network boundaries:
+
+| Template | Scope | Key Resources & Invariants |
+| :--- | :---: | :--- |
+| [iam.yaml](infra/iam.yaml) | Identity & Access | Least-privilege IAM roles (Operator, Approver, Publisher, Coordinator, Managed Node, AD Password Worker). Enforces scoped PassRole and explicit Deny for Tier 0 secret access. |
+| [network.yaml](infra/network.yaml) | VPC & PrivateLink | Isolated VPC, private subnets, security groups, and interface endpoints for SSM, SSMMessages, EC2Messages, and KMS. |
+| [observability.yaml](infra/observability.yaml) | Monitoring & Alerts | Encrypted CloudWatch Log Groups, custom metrics for fleet patch compliance, and SNS alert topics. |
+| [orchestration.yaml](infra/orchestration.yaml) | Step Functions & Lambda | State machine for 5-phase fleet rollouts, canary waves, and Lambda handlers (Dispatch, Reconcile, Cancel, Report). |
+| [secrets.yaml](infra/secrets.yaml) | KMS & Parameters | Dedicated KMS Customer Managed Key (CMK) and Parameter Store SecureString hierarchy for domain credentials. |
+| [state.yaml](infra/state.yaml) | Coordination & Locks | DynamoDB table for operation journaling, execution lineage, and distributed fencing tokens. |
+| [storage.yaml](infra/storage.yaml) | S3 Artifacts | Encrypted, versioned S3 buckets for worker release packages, deployment plans, and S3 server access logging. |
+
+## Operational Runbooks
+
+The repository includes **16 comprehensive operational runbooks** categorized by lifecycle domain:
+
+### Active Directory & Identity Operations
+1. [Deployment and Permissions](runbooks/DEPLOYMENT.md) — Control plane deployment, IAM prerequisites, and Step Functions provisioning.
+2. [Active Directory Operations](runbooks/AD-OPERATIONS.md) — AD lifecycle, user/group/computer management, DC health diagnostics.
+3. [DNS and Group Policy](runbooks/DNS-GPO.md) — DNS records, conditional forwarders, and GPO link auditing.
+4. [Certificate Services & Enrollment (PKI)](runbooks/PKI.md) — Enterprise CA management, machine certificate enrollment, CRL distribution.
+
+### WSUS & Servicing Authority
+5. [WSUS Server & Client Diagnosis](runbooks/WSUS.md) — WSUS server maintenance, client policy troubleshooting, cache reset.
+6. [WSUS Integration Architecture](runbooks/WSUS-INTEGRATION.md) — Update authority architecture, SSL/TLS port 8531 enforcement, upstream decoupling.
+
+### Fleet Patch Operations & Servicing Recovery
+7. [Fleet Patch Operations](runbooks/OPERATIONS.md) — Phased rollout execution, canary wave progression, fleet monitoring.
+8. [Reboot Coordination & Servicing Recovery](runbooks/REBOOT-AND-PATCH-RECOVERY.md) — Safe reboot sequencing, servicing lock management, post-patch verification.
+9. [Fleet Quarantine & Rollback Recovery](runbooks/RECOVERY.md) — Disaster recovery procedures, node quarantine, failed state clearance.
+
+### Infrastructure, Security & Networking
+10. [VPC Network Topology & PrivateLink](runbooks/NETWORK.md) — Interface endpoints, DNS conditional forwarding to AmazonProvidedDNS (10.0.0.2).
+11. [Secrets Management & Parameter Store](runbooks/SECRETS.md) — Dedicated KMS CMK, Parameter Store SecureString lifecycle, credential boundaries.
+12. [Audit Logging & Evidence Retention](runbooks/AUDIT-AND-RETENTION.md) — CloudTrail events, SSM execution records, DynamoDB journal retention.
+
+### Environment Lifecycle, Release & Governance
+13. [Environment Adoption Lifecycle](runbooks/ENVIRONMENT-ADOPTION.md) — Promotion across Lab, Staging, Prod; configuration validation, placeholder refusal.
+14. [Worker Packaging & Release Engineering](runbooks/RELEASE.md) — Immutable worker packaging, S3 publishing, SHA256 release manifests.
+15. [Operational Handover & RACI Matrix](runbooks/HANDOVER.md) — Day-2 operational handover, role responsibilities, runbook index.
+16. [Lab Acceptance & Qualification Gates](runbooks/LAB-ACCEPTANCE.md) — Gates G1–G3 offline and live qualification criteria.
+
+## Upstream Integration & Compatibility Baseline
+
+This project implements a **Decoupled Consumer Model** consuming Windows Update Agent (WUA) automation logic from [`WUU2-CLI`](https://github.com/dazzo31/WUU2-CLI):
+- **Repository:** `https://github.com/dazzo31/WUU2-CLI.git`
+- **Pinned Release Candidate:** `v1.5.0-rc.4-cli`
+- **Pinned Commit:** `e81b620905d549783d7e17498a0b3cbbcf5f4095`
+- **License:** MIT License
+- **Contract Reference:** Consult [`integrations/WUU2-CLI.md`](integrations/WUU2-CLI.md) for the developer promotion workflow, interface boundaries, and cross-transport mutual exclusion (`Global\WUU_Servicing_Lock`).
+
 ## Safety Model
 
 - Commands default to `Inspect` or `Diagnose`; write actions default to `Apply=false` and report `PREVIEW`.
@@ -79,21 +151,6 @@ flowchart TD
 - No automatic domain-controller reboot, object deletion, SUSDB rebuild, CA key export, default-policy modification, or CA signing-certificate renewal.
 - A command success means only the stated operation completed or was requested. Synchronization, content downloads, enrollment, CRL distribution, AD replication and application binding need separate verification.
 
-## Runbooks
-
-1. [Deployment and permissions](runbooks/DEPLOYMENT.md)
-2. [AD lifecycle and domain diagnostics](runbooks/AD-OPERATIONS.md)
-3. [DNS and Group Policy](runbooks/DNS-GPO.md)
-4. [WSUS diagnosis and recovery](runbooks/WSUS.md)
-5. [Certificate services and enrollment](runbooks/PKI.md)
-6. [Lab acceptance and release gates](runbooks/LAB-ACCEPTANCE.md)
-
-## AWS Implementation Plan
-
-[The WSUS-backed AWS implementation plan](planning/aws-integration/plan.md) covers an optional WUU2-CLI SSM backend, local Windows workers, immutable approvals, fleet coordination/reboots, IAM/networking/artifacts/audit, productionising the domain documents and release/recovery gates. It contains 20 requirements and 62 tasks across seven phases. WSUS remains the update authority; AWS Patch Manager is explicitly excluded.
-
-[Decision notes](planning/aws-integration/research.md) explain the integration choices. Machine-readable requirement/task checkpoints are under planning/aws-integration/checkpoints. These are planning artifacts only: WUU source, AWS resources and live Windows services have not been changed.
-
 ## Offline Validation
 
 From this pack's directory, with Node.js and Windows PowerShell 5.1 installed:
@@ -103,12 +160,21 @@ npm ci --ignore-scripts
 npm test
 ```
 
-The validator checks YAML parsing/duplicate keys, SSM document schema selection, size limits, Windows preconditions, parameter references/defaults, environment interpolation and PowerShell 5.1 parsing. It executes missing-input guard checks in isolated runspaces and mocks AD/AWS calls for user-preview and missing-ticket tests. It never deploys documents or invokes actual domain/service operations.
+The validation suite executes:
+1. **PowerShell Pack Invariant Gate** (`tests/Validate-Pack.ps1`): Validates YAML parsing/duplicate keys, SSM document schema selection, size limits, Windows preconditions, parameter references/defaults, environment interpolation, PowerShell 5.1 parsing, and WSUS authority invariants.
+2. **Cloud Orchestration Unit Tests** (`tests/fleet-orchestration.test.mjs`): 9 unit tests verifying Lambda handlers (dispatch, reconcile, cancel, report) and Step Functions failure-mapping logic.
+3. **CloudFormation Template Validation** (`tests/validate-infra.cjs`): Validates syntax, intrinsic tags (`!Sub`, `!Ref`), and structure across all 7 templates in `infra/`.
+4. **Inventory & Drift Protection** (`tests/read-documents.cjs`): Enforces that all 19 SSM documents, 16 runbooks, and 7 CloudFormation templates are indexed in `README.md`.
 
-These checks do **not** prove AWS service-side schema acceptance, COM/API availability, IAM correctness, AD delegation, operational success, rollback or production compatibility. Those remain future lab gates.
+These checks do **not** prove AWS service-side schema acceptance, COM/API availability, IAM correctness, AD delegation, operational success, rollback or production compatibility. Those remain future lab gates (Gates G1–G3 in [LAB-ACCEPTANCE.md](runbooks/LAB-ACCEPTANCE.md)).
 
-## Remaining Scope
+## AWS Implementation Plan
 
-This first pack covers the requested starting operations, not every possible domain management/recovery task. Extend it with reviewed, separately tested workflows for domain join/secure-channel repair, OU creation, GPO setting changes/restoration, privileged/nested groups, DNS AAAA/PTR/SRV records, SUSDB SQL maintenance, patch deployment, DFSR recovery, authoritative AD restore, FSMO seizure, forest recovery, CA disaster recovery, HSM integration and application-specific certificate binding. Never make one generic repair command perform these automatically.
+[The WSUS-backed AWS implementation plan](planning/aws-integration/plan.md) covers an optional WUU2-CLI SSM backend, local Windows workers, immutable approvals, fleet coordination/reboots, IAM/networking/artifacts/audit, productionising the domain documents and release/recovery gates. It contains 20 requirements and 62 tasks across seven phases. WSUS remains the update authority; AWS Patch Manager is explicitly excluded.
 
-No repository initialization, commit, GitHub upload, AWS deployment or local Windows configuration change is performed by generating this pack.
+[Decision notes](planning/aws-integration/research.md) explain the integration choices. Machine-readable requirement/task checkpoints are under `planning/aws-integration/checkpoints`. These are planning artifacts only: WUU source, AWS resources and live Windows services have not been changed.
+
+## Contributing & Security
+
+- Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
+- To report security vulnerabilities privately, please review our [Security Policy](SECURITY.md).

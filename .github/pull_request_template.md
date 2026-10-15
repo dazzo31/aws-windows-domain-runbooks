@@ -24,3 +24,4 @@ Before submitting this PR, please confirm that your changes adhere to repository
 - [ ] **WSUS Authority Invariant:** Changes do not introduce fallbacks or calls to public Microsoft Update or Windows Update services.
 - [ ] **PowerShell 5.1 Compatibility:** Code runs under Windows PowerShell 5.1 without PowerShell 7+ syntax (no `??`, `?.`, ternary operators, or `ConvertFrom-Json -AsHashtable`).
 - [ ] **Decoupled Consumer Model:** The upstream WUU2-CLI engine is consumed without in-place modification.
+

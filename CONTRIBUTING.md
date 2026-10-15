@@ -88,3 +88,4 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-LabQualif
 ## Security Vulnerabilities
 
 Please **do not** open public GitHub issues or discussions for security vulnerabilities. Review our [Security Policy](SECURITY.md) to report vulnerabilities privately via GitHub Private Vulnerability Reporting.
+
