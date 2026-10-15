@@ -22,3 +22,4 @@ Report vulnerabilities privately via GitHub's **Private Vulnerability Reporting*
    - Minimal proof of concept or reproduction steps.
 
 **Never include live AWS credentials, actual account IDs, Active Directory password hashes, private keys, or internal network topology in any report.**
+

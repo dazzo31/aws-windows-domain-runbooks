@@ -10,6 +10,21 @@ permissions:
   contents: read
 
 jobs:
+  secret-scan:
+    name: Automated Secret Scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository with Full History
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: true
+
   validate:
     name: Validate Runbooks and Tooling
     runs-on: windows-latest

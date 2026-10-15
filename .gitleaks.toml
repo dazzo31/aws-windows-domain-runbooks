@@ -1,0 +1,26 @@
+# Gitleaks Configuration for aws-windows-domain-runbooks
+title = "aws-windows-domain-runbooks gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Repository allowlist for documentation placeholders, test fixtures, and RFC 1918 addresses"
+regexes = [
+  '''arn:aws:iam::(123456789012|111122223333):role/[a-zA-Z0-9_\-]+''',
+  '''arn:aws:kms:[a-z0-9\-]+:123456789012:key/[a-zA-Z0-9_\-]+''',
+  '''arn:aws:s3:::wuu-artifacts-[a-zA-Z0-9_\-]+''',
+  '''arn:aws:dynamodb:[a-z0-9\-]+:123456789012:table/[a-zA-Z0-9_\-]+''',
+  '''123456789012''',
+  '''111122223333''',
+  '''000000000000''',
+  '''999999999999''',
+  '''12345678-1234-1234-1234-123456789012''',
+  '''01234567-89ab-cdef-0123-456789abcdef'''
+]
+paths = [
+  '''^\.gitleaks\.toml$''',
+  '''^tests/contracts/canonical-fixtures\.json$''',
+  '''^reports/''',
+  '''^scratch/'''
+]

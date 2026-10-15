@@ -54,7 +54,10 @@ param(
     [string]$ChangeTicket = 'QUAL-001',
 
     [Parameter()]
-    [switch]$SkipLiveChecks
+    [switch]$SkipLiveChecks,
+
+    [Parameter()]
+    [switch]$PreserveRawCallerIdentity
 )
 
 $ErrorActionPreference = 'Stop'
@@ -67,6 +70,15 @@ Write-Host "==========================================================" -Foregro
 Write-Host "Environment: $Environment | Ticket: $ChangeTicket | Timestamp: $timestamp`n" -ForegroundColor Gray
 
 $results = [System.Collections.Generic.List[pscustomobject]]::new()
+
+function Protect-SensitiveIdentity {
+    param([string]$Text)
+    if ($PreserveRawCallerIdentity -or [string]::IsNullOrEmpty($Text)) { return $Text }
+    $redacted = [regex]::Replace($Text, '(?<=arn:aws:iam::)\d{12}(?=:)', '***MASKED-ACCOUNT***')
+    $redacted = [regex]::Replace($redacted, '(?<=user/)[^/\s]+', '***MASKED-USER***')
+    $redacted = [regex]::Replace($redacted, '(?<=assumed-role/[^/]+/)[^/\s]+', '***MASKED-SESSION***')
+    return $redacted
+}
 
 function Add-QualificationResult {
     param([string]$Category, [string]$TestName, [string]$Status, [string]$Details)
@@ -143,7 +155,8 @@ if ($SkipLiveChecks -or -not (Get-Command 'aws' -ErrorAction SilentlyContinue)) 
     try {
         $sts = & aws sts get-caller-identity 2>$null | ConvertFrom-Json
         if ($sts.Arn) {
-            Add-QualificationResult -Category "Gate3-AWS" -TestName "Live AWS API & STS Identity" -Status "PASS" -Details "Authenticated as $($sts.Arn)"
+            $maskedArn = Protect-SensitiveIdentity -Text $sts.Arn
+            Add-QualificationResult -Category "Gate3-AWS" -TestName "Live AWS API & STS Identity" -Status "PASS" -Details "Authenticated as $maskedArn"
         } else {
             Add-QualificationResult -Category "Gate3-AWS" -TestName "Live AWS API & STS Identity" -Status "SKIP" -Details "No active AWS STS session found."
         }

@@ -72,6 +72,28 @@ $global:WriteAttempted = $false
             $guardChecks++
         } finally { $pipeline.Dispose() }
     }
+
+    # WSUS authority invariant: no document scripts may invoke public Windows Update commands
+    $forbiddenUpdateCommands = @('Install-WindowsUpdate', 'Get-WindowsUpdate', 'UsoClient\s+Start', 'wuauclt\s+/detectnow')
+    foreach ($document in $documents) {
+        foreach ($code in $document.scripts) {
+            foreach ($forbidden in $forbiddenUpdateCommands) {
+                if ($code -match $forbidden) {
+                    throw "$($document.name): violates WSUS authority invariant by referencing '$forbidden'."
+                }
+            }
+        }
+    }
+    $guardChecks++
+
+    # Identity protection invariant: verify ARN and account ID sanitization
+    $testArn = 'arn:aws:iam::123456789012:user/admin'
+    $masked = [regex]::Replace($testArn, '(?<=arn:aws:iam::)\d{12}(?=:)', '***MASKED-ACCOUNT***')
+    $masked = [regex]::Replace($masked, '(?<=user/)[^/\s]+', '***MASKED-USER***')
+    if ($masked -ne 'arn:aws:iam::***MASKED-ACCOUNT***:user/***MASKED-USER***') {
+        throw 'STS identity masking logic failed to sanitize caller ARN.'
+    }
+    $guardChecks++
 } finally {
     foreach ($entry in Get-ChildItem Env: | Where-Object Name -like 'SSM_*') { [Environment]::SetEnvironmentVariable($entry.Name, $null, 'Process') }
     foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }
