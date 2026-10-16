@@ -53,6 +53,17 @@ jobs:
       - name: Validate CloudFormation Infrastructure Templates
         run: node tests/validate-infra.cjs
 
+      - name: Setup Python for CloudFormation Linter
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install cfn-lint
+        run: pip install cfn-lint
+
+      - name: Deep Lint CloudFormation Templates (cfn-lint)
+        run: cfn-lint infra/*.yaml
+
       - name: Run PowerShell Pack Invariant Gate
         shell: powershell
         run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Validate-Pack.ps1

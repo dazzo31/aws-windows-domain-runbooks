@@ -126,7 +126,8 @@ Resources:
       ObjectLockConfiguration:
         !If
           - IsObjectLockEnabled
-          - ObjectLockRule:
+          - ObjectLockEnabled: Enabled
+            Rule:
               DefaultRetention:
                 Mode: !Ref ObjectLockMode
                 Days: !Ref ObjectLockRetentionDays
@@ -155,7 +156,7 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: aws:kms
-              KMSMasterKeyId: !Ref KmsKeyArn
+              KMSMasterKeyID: !Ref KmsKeyArn
       LoggingConfiguration:
         DestinationBucketName: !Ref AccessLogsBucket
         LogFilePrefix: "artifacts-access-logs/"
